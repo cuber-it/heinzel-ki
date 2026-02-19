@@ -1,0 +1,9 @@
+## Port-Vergabe
+
+# Infrastruktur
+postgres:   5432
+registry:   12201
+
+# Provider
+provider-a: 12101   # Anthropic
+provider-b: 12102   # OpenAI
