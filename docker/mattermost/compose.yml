@@ -29,9 +29,4 @@ services:
       - ${DOCKER_BASE}/mattermost/logs:/var/log/mattermost
       - ${DOCKER_BASE}/mattermost/config:/mattermost/config
       - ${DOCKER_BASE}/mattermost/code:/mattermost/plugins
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8065/api/v4/system/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+
