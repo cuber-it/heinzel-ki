@@ -2,20 +2,13 @@
 # H.E.I.N.Z.E.L. — Setup MVP-00
 #
 # Legt persistente Verzeichnisse an und bereitet die Umgebung vor.
-# Aufruf: bash scripts/setup.sh <targetpath>
-# Beispiel: bash scripts/setup.sh /home/heinzel-user/docker/heinzel
+# Aufruf: bash scripts/setup.sh [targetpath]
+# Default: ~/docker — Beispiel: bash scripts/setup.sh /srv/heinzel
 
 set -euo pipefail
 
 # ─── Argumente ───────────────────────────────────────────────────────────────
-if [[ $# -lt 1 ]]; then
-    echo "Fehler: Kein Zielpfad angegeben."
-    echo "Aufruf: bash scripts/setup.sh <targetpath>"
-    echo "Beispiel: bash scripts/setup.sh /home/heinzel-user/docker/heinzel"
-    exit 1
-fi
-
-DOCKER_BASE="$1"
+DOCKER_BASE="${1:-$HOME/docker}"
 
 # ─── .env prüfen ─────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
