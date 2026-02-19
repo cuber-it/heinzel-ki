@@ -1,0 +1,134 @@
+version: "3.9"
+
+# H.E.I.N.Z.E.L. — MVP-00 Infrastruktur
+#
+# Voraussetzung: scripts/setup.sh <targetpath> wurde ausgeführt
+# Ports: postgres=5432, mattermost=8001, jupyterhub=8888, caddy=8000, portainer=9000
+
+networks:
+  heinzel:
+    name: heinzel
+    driver: bridge
+
+services:
+
+  # ─── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: heinzel-postgres
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ${DOCKER_BASE}/postgres/data:/var/lib/postgresql/data
+      - ${DOCKER_BASE}/postgres/logs:/var/log/postgresql
+      - ${DOCKER_BASE}/postgres/config:/etc/postgresql/conf.d
+      - ${DOCKER_BASE}/postgres/code:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Mattermost ────────────────────────────────────────────────────────────
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: heinzel-mattermost
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "8001:8065"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mattermost?sslmode=disable"
+      MM_SERVICESETTINGS_SITEURL: ${MM_SITEURL}
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      MM_LOGSETTINGS_CONSOLELEVEL: INFO
+      MM_LOGSETTINGS_ENABLEFILE: "true"
+      MM_LOGSETTINGS_FILELOCATION: /var/log/mattermost
+    volumes:
+      - ${DOCKER_BASE}/mattermost/data:/mattermost/data
+      - ${DOCKER_BASE}/mattermost/logs:/var/log/mattermost
+      - ${DOCKER_BASE}/mattermost/config:/mattermost/config
+      - ${DOCKER_BASE}/mattermost/code:/mattermost/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8065/api/v4/system/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── JupyterHub ────────────────────────────────────────────────────────────
+  jupyterhub:
+    build:
+      context: ./docker/jupyterhub
+      dockerfile: Dockerfile
+    image: heinzel-jupyterhub:latest
+    container_name: heinzel-jupyterhub
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "8888:8000"
+    volumes:
+      - ${DOCKER_BASE}/jupyterhub/config/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
+      - ${DOCKER_BASE}/jupyterhub/data:/data
+      - ${DOCKER_BASE}/jupyterhub/logs:/var/log/jupyterhub
+      - ${DOCKER_BASE}/jupyterhub/code:/srv/notebooks
+    environment:
+      JUPYTERHUB_CRYPT_KEY: ${JUPYTERHUB_CRYPT_KEY}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/hub/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─── Caddy ─────────────────────────────────────────────────────────────────
+  caddy:
+    image: caddy:alpine
+    container_name: heinzel-caddy
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "8000:80"
+    volumes:
+      - ${DOCKER_BASE}/caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DOCKER_BASE}/caddy/data:/data
+      - ${DOCKER_BASE}/caddy/logs:/var/log/caddy
+      - ${DOCKER_BASE}/caddy/code:/srv
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── Portainer ─────────────────────────────────────────────────────────────
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: heinzel-portainer
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_BASE}/portainer/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
