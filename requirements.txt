@@ -1,0 +1,4 @@
+# H.E.I.N.Z.E.L. — Requirements
+# Basis-Abhängigkeiten, wachsen mit jedem MVP
+
+# Wird mit mvp-01 befüllt
