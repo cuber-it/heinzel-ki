@@ -1,0 +1,38 @@
+version: "3.9"
+
+# H.E.I.N.Z.E.L. — Mattermost
+networks:
+  heinzel:
+    external: true
+
+services:
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: heinzel-mattermost
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "8001:8065"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mattermost?sslmode=disable"
+      MM_SERVICESETTINGS_SITEURL: ${MM_SITEURL}
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      MM_LOGSETTINGS_CONSOLELEVEL: INFO
+      MM_LOGSETTINGS_ENABLEFILE: "true"
+      MM_LOGSETTINGS_FILELOCATION: /var/log/mattermost
+    volumes:
+      - ${DOCKER_BASE}/mattermost/data:/mattermost/data
+      - ${DOCKER_BASE}/mattermost/logs:/var/log/mattermost
+      - ${DOCKER_BASE}/mattermost/config:/mattermost/config
+      - ${DOCKER_BASE}/mattermost/code:/mattermost/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8065/api/v4/system/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

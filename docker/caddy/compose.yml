@@ -1,0 +1,26 @@
+version: "3.9"
+
+# H.E.I.N.Z.E.L. — Caddy (Artifact Server / Static Files)
+networks:
+  heinzel:
+    external: true
+
+services:
+  caddy:
+    image: caddy:alpine
+    container_name: heinzel-caddy
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "8000:80"
+    volumes:
+      - ${DOCKER_BASE}/caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DOCKER_BASE}/caddy/data:/data
+      - ${DOCKER_BASE}/caddy/logs:/var/log/caddy
+      - ${DOCKER_BASE}/caddy/code:/srv
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
