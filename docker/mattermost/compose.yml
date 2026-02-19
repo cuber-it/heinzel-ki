@@ -13,6 +13,8 @@ services:
       - heinzel
     ports:
       - "8001:8065"
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy
