@@ -14,7 +14,11 @@ services:
     ports:
       - "8001:8065"
     healthcheck:
-      disable: true
+      test: ["CMD", "/mattermost/bin/mmctl", "system", "status", "--local"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
     depends_on:
       postgres:
         condition: service_healthy
