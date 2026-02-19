@@ -5,22 +5,59 @@
 # Aufruf: bash scripts/setup.sh [targetpath]
 # Default: ~/docker — Beispiel: bash scripts/setup.sh /srv/heinzel
 
-set -euo pipefail
+set -uo pipefail
 
-# ─── Argumente ───────────────────────────────────────────────────────────────
 DOCKER_BASE="${1:-$HOME/docker}"
 
-# ─── .env prüfen ─────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "H.E.I.N.Z.E.L. Setup"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# ─── .env anlegen falls nicht vorhanden ──────────────────────────────────────
 if [[ ! -f "$PROJECT_DIR/.env" ]]; then
-    echo "Fehler: .env nicht gefunden."
-    echo "Bitte zuerst: cp .env.example .env && .env anpassen"
-    exit 1
+    echo "Keine .env gefunden — erstelle aus .env.example..."
+    cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
+    echo "  ✓ .env angelegt"
 fi
 
 source "$PROJECT_DIR/.env"
+
+# ─── Passwörter generieren falls noch auf Default ────────────────────────────
+CHANGED=false
+
+if [[ "${POSTGRES_PASSWORD:-changeme}" == "changeme" ]]; then
+    PG_PASS=$(openssl rand -base64 24 | tr -d '/=+' | head -c 32)
+    sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$PG_PASS/" "$PROJECT_DIR/.env"
+    echo "  ✓ POSTGRES_PASSWORD generiert"
+    CHANGED=true
+fi
+
+if [[ "${JUPYTERHUB_CRYPT_KEY:-changeme}" == "changeme" ]]; then
+    JH_KEY=$(openssl rand -hex 32)
+    sed -i "s/^JUPYTERHUB_CRYPT_KEY=.*/JUPYTERHUB_CRYPT_KEY=$JH_KEY/" "$PROJECT_DIR/.env"
+    echo "  ✓ JUPYTERHUB_CRYPT_KEY generiert"
+    CHANGED=true
+fi
+
+if [[ "$CHANGED" == "true" ]]; then
+    echo "  ℹ Secrets in .env gespeichert — bitte sichern!"
+    source "$PROJECT_DIR/.env"
+    echo ""
+fi
+
+# ─── Docker Netzwerk ─────────────────────────────────────────────────────────
+echo "Prüfe Docker-Netzwerk 'heinzel'..."
+if ! docker network inspect heinzel &>/dev/null; then
+    docker network create heinzel
+    echo "  ✓ Netzwerk 'heinzel' angelegt"
+else
+    echo "  ℹ Netzwerk 'heinzel' bereits vorhanden"
+fi
+echo ""
 
 # ─── Verzeichnisse anlegen ───────────────────────────────────────────────────
 echo "Lege persistente Verzeichnisse an unter: $DOCKER_BASE"
@@ -32,34 +69,32 @@ for SERVICE in postgres mattermost jupyterhub caddy portainer; do
     done
     echo "  ✓ $SERVICE"
 done
+echo ""
 
 # ─── Mattermost: Berechtigungen ──────────────────────────────────────────────
-echo ""
 echo "Setze Mattermost-Berechtigungen (UID 2000)..."
 if chown -R 2000:2000 "$DOCKER_BASE/mattermost" 2>/dev/null; then
     echo "  ✓ Mattermost chown gesetzt"
+elif sudo chown -R 2000:2000 "$DOCKER_BASE/mattermost" 2>/dev/null; then
+    echo "  ✓ Mattermost chown gesetzt (via sudo)"
 else
-    echo "  ⚠ chown fehlgeschlagen — bitte manuell als root:"
+    echo "  ⚠ chown fehlgeschlagen — bitte manuell:"
     echo "    sudo chown -R 2000:2000 $DOCKER_BASE/mattermost"
 fi
+echo ""
 
 # ─── Caddy: Config kopieren ──────────────────────────────────────────────────
-echo ""
-echo "Kopiere Caddy-Config..."
+echo "Kopiere Configs..."
 cp "$PROJECT_DIR/docker/caddy/Caddyfile" "$DOCKER_BASE/caddy/config/Caddyfile"
-echo "  ✓ Caddyfile → $DOCKER_BASE/caddy/config/Caddyfile"
-
-# ─── JupyterHub: Config kopieren ─────────────────────────────────────────────
-echo "Kopiere JupyterHub-Config..."
+echo "  ✓ Caddyfile"
 cp "$PROJECT_DIR/docker/jupyterhub/jupyterhub_config.py" "$DOCKER_BASE/jupyterhub/config/jupyterhub_config.py"
-echo "  ✓ jupyterhub_config.py → $DOCKER_BASE/jupyterhub/config/"
+echo "  ✓ jupyterhub_config.py"
+echo ""
 
 # ─── Mattermost DB anlegen ───────────────────────────────────────────────────
-echo ""
-echo "Starte PostgreSQL kurz um Mattermost-DB anzulegen..."
+echo "Starte PostgreSQL und lege Mattermost-DB an..."
 cd "$PROJECT_DIR"
 docker compose up -d postgres
-echo "  Warte auf PostgreSQL..."
 until docker exec heinzel-postgres pg_isready -U "$POSTGRES_USER" &>/dev/null; do
     sleep 2
 done
@@ -69,14 +104,13 @@ docker exec heinzel-postgres psql -U "$POSTGRES_USER" \
     -c "CREATE DATABASE mattermost;" 2>/dev/null \
     && echo "  ✓ Datenbank 'mattermost' angelegt" \
     || echo "  ℹ Datenbank 'mattermost' bereits vorhanden"
+echo ""
 
 # ─── Fertig ──────────────────────────────────────────────────────────────────
-echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Setup abgeschlossen."
 echo ""
-echo "Nächster Schritt:"
-echo "  cd $PROJECT_DIR && docker compose up -d"
+echo "Starten: docker compose up -d"
 echo ""
 echo "Services:"
 echo "  Mattermost  → http://localhost:8001"
