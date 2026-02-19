@@ -73,14 +73,8 @@ echo ""
 
 # ─── Mattermost: Berechtigungen ──────────────────────────────────────────────
 echo "Setze Mattermost-Berechtigungen (UID 2000)..."
-if chown -R 2000:2000 "$DOCKER_BASE/mattermost" 2>/dev/null; then
-    echo "  ✓ Mattermost chown gesetzt"
-elif sudo chown -R 2000:2000 "$DOCKER_BASE/mattermost" 2>/dev/null; then
-    echo "  ✓ Mattermost chown gesetzt (via sudo)"
-else
-    echo "  ⚠ chown fehlgeschlagen — bitte manuell:"
-    echo "    sudo chown -R 2000:2000 $DOCKER_BASE/mattermost"
-fi
+docker run --rm -v "$DOCKER_BASE/mattermost:/mnt" alpine chown -R 2000:2000 /mnt
+echo "  ✓ Mattermost chown gesetzt"
 echo ""
 
 # ─── Caddy: Config kopieren ──────────────────────────────────────────────────
