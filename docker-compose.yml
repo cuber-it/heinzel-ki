@@ -1,0 +1,17 @@
+
+# H.E.I.N.Z.E.L. — MVP-00 Infrastruktur
+#
+# Voraussetzung: bash scripts/setup.sh wurde ausgeführt
+# Starten: docker compose up -d
+
+networks:
+  heinzel:
+    name: heinzel
+    driver: bridge
+
+include:
+  - docker/postgres/compose.yml
+  - docker/mattermost/compose.yml
+  - docker/jupyterhub/compose.yml
+  - docker/caddy/compose.yml
+  - docker/portainer/compose.yml

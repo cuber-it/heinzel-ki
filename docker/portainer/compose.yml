@@ -1,0 +1,19 @@
+
+# H.E.I.N.Z.E.L. — Portainer
+networks:
+  heinzel:
+    external: true
+
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: heinzel-portainer
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_BASE}/portainer/data:/data
+
