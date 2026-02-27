@@ -1,0 +1,31 @@
+
+# H.E.I.N.Z.E.L. — JupyterHub
+networks:
+  heinzel:
+    external: true
+
+services:
+  jupyterhub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: heinzel-jupyterhub:latest
+    container_name: heinzel-jupyterhub
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "8888:8000"
+    volumes:
+      - ${DOCKER_BASE}/jupyterhub/config/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
+      - ${DOCKER_BASE}/jupyterhub/data:/data
+      - ${DOCKER_BASE}/jupyterhub/logs:/var/log/jupyterhub
+      - ${DOCKER_BASE}/jupyterhub/code:/srv/notebooks
+    environment:
+      JUPYTERHUB_CRYPT_KEY: ${JUPYTERHUB_CRYPT_KEY}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/hub/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
