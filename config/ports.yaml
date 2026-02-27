@@ -1,9 +1,35 @@
-## Port-Vergabe
+# H.E.I.N.Z.E.L. — Port-Vergabe (definitiv)
+#
+# Schema:
+#   12001-12100  Basis-Infrastruktur (Postgres, Mattermost, JupyterHub, Caddy, etc.)
+#   12101-12200  Services            (LLM Provider, etc.)
+#   12201-12300  Tools               (Chainlit, MCP-Server, etc.)
+#   12501+       Heinzels            (#1/Riker = 12501, #2 = 12502, ...)
+#
+# Hinweis: Ports außerhalb des 12xxx-Schemas (Postgres 5432, Mattermost 8001 etc.)
+# sind historisch gewachsen und werden bei Gelegenheit migriert.
 
-# Infrastruktur
-postgres:   5432
-registry:   12201
+# ─── Basis-Infrastruktur (12001-12100) ────────────────────────────────────────
+postgres:       5432    # TODO: → 12001
+mattermost:     8001    # TODO: → 12002
+jupyterhub:     8888    # TODO: → 12003
+caddy:          8000    # TODO: → 12004
+portainer:      9000    # TODO: → 12005
+gitea:          3000    # TODO: → 12006
 
-# Provider
-provider-a: 12101   # Anthropic
-provider-b: 12102   # OpenAI
+# ─── Services (12101-12200) ───────────────────────────────────────────────────
+provider-openai:        12101   # SOLL — aktuell noch auf 12001 (!)
+provider-anthropic:     12102   # reserviert
+provider-google:        12103   # reserviert
+# PoC-Instanzen (temporär):
+poc-provider-openai:    12011   # TODO: entfernen wenn PoC abgelöst
+
+# ─── Tools (12201-12300) ──────────────────────────────────────────────────────
+chainlit:               12201   # SOLL — aktuell noch auf 12010 (!)
+# PoC-Instanzen (temporär):
+poc-chainlit:           12017   # TODO: entfernen wenn PoC abgelöst
+
+# ─── Heinzels (12501+) ────────────────────────────────────────────────────────
+heinzel-1-riker:        12501   # #1 / Nummer-1 / Riker
+# heinzel-2:            12502   # reserviert
+# heinzel-3:            12503   # reserviert

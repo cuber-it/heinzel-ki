@@ -1,0 +1,26 @@
+# Provider-Config — Vorlage für neue Provider
+# Kopieren nach config/myprovider.yaml und anpassen
+
+name: "myprovider"
+api_base: "https://api.myprovider.com/v1"
+default_model: "my-model-v1"
+
+models:
+  - id: "my-model-v1"
+    context_window: 32000
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_function_calling: false
+    input_cost_per_1m_tokens: 1.00
+    output_cost_per_1m_tokens: 2.00
+
+  - id: "my-model-v2"
+    context_window: 128000
+    max_output_tokens: 8192
+    supports_streaming: true
+    supports_function_calling: true
+    input_cost_per_1m_tokens: 3.00
+    output_cost_per_1m_tokens: 6.00
+
+# Für Ollama/lokale LLMs: api_base auf den lokalen Endpunkt setzen
+# z.B. http://ollama:11434/api

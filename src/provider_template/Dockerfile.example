@@ -1,0 +1,25 @@
+# Dockerfile-Template für neue Provider
+# Kopieren nach Dockerfile und anpassen (Providername)
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Dependencies
+COPY services/llm_provider/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Source
+COPY services/llm_provider/src/ .
+
+# Provider-spezifische Datei ins src-Verzeichnis
+# (myprovider_provider.py muss neben openai_provider.py etc. liegen)
+
+ENV PROVIDER_TYPE=myprovider
+ENV CONFIG_PATH=/config/myprovider.yaml
+ENV LOG_DIR=/data
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
