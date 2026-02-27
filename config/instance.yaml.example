@@ -1,0 +1,30 @@
+# H.E.I.N.Z.E.L. Provider — Instanz-Konfiguration
+# cp instance.yaml.example instance.yaml und anpassen
+# instance.yaml wird NIEMALS in Git eingecheckt
+
+# API-Key für diesen Provider
+# Überschreibbar per Env-Var: ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY
+api_key: ""
+
+# Dialog-Logging (Request/Response als JSONL unter /data/)
+# Überschreibbar per Env-Var: LOG_REQUESTS=true|false
+log_requests: true
+
+# Datenbank für Cost/Token-Logging
+# Überschreibbar per Env-Var: DATABASE_URL
+database:
+  # SQLite (default, kein extra Service nötig)
+  url: "sqlite:///data/costs.db"
+  # PostgreSQL-Beispiel:
+  # url: "postgresql://heinzel:secret@heinzel-postgres:5432/heinzel"
+
+# Log-Retention und Speichermanagement
+retention:
+  # Dialog-Logs (JSONL): Dateien älter als X Tage werden gelöscht/komprimiert
+  log_max_age_days: 30
+  # Maximale Gesamtgröße der Logs in MB (0 = unbegrenzt)
+  log_max_size_mb: 500
+  # Alte Logs komprimieren statt löschen (gzip)
+  log_compress: true
+  # Metriken-DB: Einträge älter als X Tage werden gelöscht
+  metrics_max_age_days: 90

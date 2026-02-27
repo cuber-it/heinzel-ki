@@ -1,0 +1,26 @@
+# H.E.I.N.Z.E.L. — Frontend (Chainlit + CLI)
+# Verbindet sich mit dem Provider Gateway
+#
+# Start:  docker compose up --build -d
+# Logs:   docker logs heinzel-chainlit -f
+# Ports:  12201 — Chainlit Web-UI (Tools-Range)
+
+networks:
+  heinzel:
+    external: true
+
+services:
+  chainlit:
+    build:
+      context: ../../frontend
+    container_name: heinzel-chainlit
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12201:8000"
+    environment:
+      PROVIDER_URL: http://heinzel-provider-openai:8000
+      PROVIDER_TYPE: openai
+    depends_on:
+      - provider-openai
