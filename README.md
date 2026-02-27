@@ -6,44 +6,55 @@ Ein modulares Multi-Agent-System auf Basis von Claude. Heinzel sind autonome KI-
 
 ---
 
-## Aufbau
+## Was ist H.E.I.N.Z.E.L.?
 
-Dieses Repository wächst MVP für MVP:
+H.E.I.N.Z.E.L. ist eine selbst-gehostete Plattform für KI-Agenten die auf eigener Hardware laufen, mit eigenen Daten arbeiten und über Mattermost kommunizieren. Von einem einfachen LLM-Provider bis hin zu koordinierten Multi-Agenten-Teams — Schritt für Schritt aufgebaut.
 
-| Branch | Inhalt |
-|---|---|
-| `mvp-00` | Infrastruktur — Docker, Netzwerk, Postgres, Mattermost, JupyterHub, Caddy, Portainer, Gitea |
-| `mvp-01` | LLM Provider Gateway — OpenAI/Anthropic/Google, Multimodal, CLI + Chainlit Frontend |
-| `main` | Aktueller Stand |
-| `development` | Laufende Entwicklung |
+---
 
-Jeder MVP-Branch bleibt erhalten — nachvollziehbar, lesbar, als Lernpfad.
+## Voraussetzungen
 
-## Struktur
+- Docker + Docker Compose
+- Linux-Host (empfohlen: 16GB+ RAM)
+- API-Key für mindestens einen LLM-Provider (OpenAI / Anthropic / Google)
+
+---
+
+## Repository-Struktur
 
 ```
 src/          — LLM Provider (OpenAI, Anthropic, Google) + Hilfsmodule
-test/         — Tests (120 passing)
+test/         — Test-Suite
 frontend/     — CLI + Chainlit Web-UI
 docker/       — Compose-Dateien pro Service
 config/       — Provider-Configs, Port-Vergabe
-docs/         — Feature Requests, Dokumentation
+docs/         — Dokumentation pro MVP
 scripts/      — Setup-Scripts
 ```
 
+---
+
+## MVP-Übersicht
+
+| MVP | Inhalt | Doku |
+|-----|--------|------|
+| mvp-00 | Basis-Infrastruktur (Docker-Stack) | [docs/mvp-00.md](docs/mvp-00.md) |
+| mvp-01 | LLM Provider Gateway + Frontends | [docs/mvp-01.md](docs/mvp-01.md) |
+
+---
+
 ## Port-Schema
 
-| Bereich | Range | Beispiel |
-|---|---|---|
+| Bereich | Range | Beispiele |
+|---------|-------|-----------|
 | Basis-Infrastruktur | 12001–12100 | Postgres, Mattermost, JupyterHub |
 | Services | 12101–12200 | LLM Provider (12101) |
 | Tools | 12201–12300 | Chainlit (12201) |
 | Heinzels | 12501+ | #1/Riker (12501) |
 
-## Voraussetzungen
+Vollständige Port-Liste: [`config/ports.yaml`](config/ports.yaml)
 
-- Docker + Docker Compose
-- API-Key für OpenAI und/oder Anthropic und/oder Google
+---
 
 ## Lizenz
 
