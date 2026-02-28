@@ -124,12 +124,12 @@ services:
     networks:
       - heinzel
     ports:
-      - "12005:9000"
+      - "12005:9443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DOCKER_BASE:-$HOME/docker}/portainer/data:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:9443 || exit 1"]
+      test: ["CMD-SHELL", "curl -sk https://localhost:9443 | grep -q portainer || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
