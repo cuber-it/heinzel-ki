@@ -6,61 +6,63 @@ Dieser MVP richtet den Docker-Stack ein, auf dem alle Heinzel-Services laufen.
 
 ## Enthaltene Services
 
-| Service | Port | Beschreibung |
-|---------|------|--------------|
-| PostgreSQL | 5432 | Zentrale Datenbank |
-| Mattermost | 8001 | Chat-UI für Heinzel-Kommunikation |
-| JupyterHub | 8888 | Notebooks für Entwicklung & Analyse |
-| Caddy | 8000 | Reverse Proxy / File Server |
-| Portainer | 9000 | Docker-Management UI |
-| Gitea | 3000 | Interner Git-Server |
+| Service    | Port  | Beschreibung                        |
+|------------|-------|-------------------------------------|
+| PostgreSQL | 12001 | Zentrale Datenbank                  |
+| Mattermost | 12002 | Chat-UI für Heinzel-Kommunikation   |
+| JupyterHub | 12003 | Notebooks für Entwicklung & Analyse |
+| Caddy      | 12004 | Reverse Proxy / File Server         |
+| Portainer  | 12005 | Docker-Management UI                |
+| Gitea      | 12006 | Interner Git-Server                 |
+
+Vollständiges Port-Schema: [`config/ports.yaml`](../config/ports.yaml)
 
 ---
 
 ## Erstes Setup
 
 ```bash
-# 1. Verzeichnisse anlegen
+# 1. Umgebungsvariablen setzen
+cp .env.example .env
+# .env öffnen: Passwörter + DOCKER_BASE anpassen
+# POSTGRES_PASSWORD und JUPYTERHUB_CRYPT_KEY: openssl rand -hex 32
+
+# 2. Verzeichnisse + Secrets anlegen
 bash scripts/setup.sh
 
-# 2. Umgebungsvariablen setzen
-cp .env.example .env
-# .env öffnen und Passwörter eintragen
-
-# 3. Stack starten
-docker compose up -d
+# 3. Infra-Stack starten
+docker compose -f docker/docker-compose.yml up -d
 ```
 
 ---
 
-## Einzelne Services starten
-
-Jeder Service hat seine eigene Compose-Datei unter `docker/<service>/compose.yml`:
+## Optionale Services starten (Provider / Frontend)
 
 ```bash
-cd docker/postgres   && docker compose up -d
-cd docker/mattermost && docker compose up -d
-cd docker/jupyterhub && docker compose up -d
-cd docker/caddy      && docker compose up -d
-cd docker/portainer  && docker compose up -d
-cd docker/gitea      && docker compose up -d
+# OpenAI Provider
+docker compose -f docker/docker-compose.yml --profile provider-openai up -d
+
+# Chainlit Frontend
+docker compose -f docker/docker-compose.yml --profile frontend up -d
+
+# Alles auf einmal
+docker compose -f docker/docker-compose.yml \
+  --profile provider-openai --profile frontend up -d
 ```
 
----
-
-## Mattermost-Datenbank anlegen
-
-Nach dem ersten Start von Postgres:
+Provider können auch einzeln gestartet werden:
 
 ```bash
-bash docker/postgres/code/init-mattermost.sh
+docker compose -f docker/llm-provider/compose.openai.yml up --build -d
+docker compose -f docker/llm-provider/compose.anthropic.yml up --build -d
+docker compose -f docker/llm-provider/compose.google.yml up --build -d
 ```
 
 ---
 
 ## Netzwerk
 
-Alle Services laufen im Docker-Netzwerk `heinzel`. Es wird beim ersten Start automatisch angelegt.
+Alle Services laufen im Docker-Netzwerk `heinzel`. Es wird beim ersten Start automatisch angelegt. Manuell:
 
 ```bash
 docker network create heinzel
