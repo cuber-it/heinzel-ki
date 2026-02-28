@@ -7,10 +7,9 @@ RUN pip install --no-cache-dir \
     pypdf python-docx openpyxl python-pptx \
     pydantic pyyaml
 
-# file_processor + models aus Provider-Src
-COPY ../src/file_processor.py .
-COPY ../src/models.py .
-COPY chainlit_app.py .
+COPY src/file_processor.py .
+COPY src/models.py .
+COPY frontend/chainlit_app.py .
 
 EXPOSE 8000
 

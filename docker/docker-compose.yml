@@ -1,0 +1,276 @@
+# H.E.I.N.Z.E.L. — Zentrales Compose
+#
+# Aufruf vom Repo-Root:
+#   docker compose -f docker/docker-compose.yml up -d            # nur Infra
+#   docker compose -f docker/docker-compose.yml --profile provider-openai up -d
+#   docker compose -f docker/docker-compose.yml --profile frontend up -d
+#   docker compose -f docker/docker-compose.yml \
+#     --profile provider-openai --profile frontend up -d         # alles
+#
+# Persistenz: ${DOCKER_BASE:-$HOME/docker}/<service>/data|config|logs
+# Ports: 12001-12100 Infra | 12101-12200 Provider | 12201-12300 Tools
+
+networks:
+  heinzel:
+    name: heinzel
+    driver: bridge
+
+# ─── Infra (immer) ────────────────────────────────────────────────────────────
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: heinzel-postgres
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12001:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-heinzel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:-heinzel}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ${DOCKER_BASE:-$HOME/docker}/postgres/data:/var/lib/postgresql/data
+      - ${DOCKER_BASE:-$HOME/docker}/postgres/logs:/var/log/postgresql
+      - ../docker/postgres/code:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-heinzel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: heinzel-mattermost
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12002:8065"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: >-
+        postgres://${POSTGRES_USER:-heinzel}:${POSTGRES_PASSWORD}@postgres:5432/mattermost?sslmode=disable
+      MM_SERVICESETTINGS_SITEURL: ${MM_SITEURL:-http://localhost:12002}
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      MM_LOGSETTINGS_CONSOLELEVEL: INFO
+      MM_LOGSETTINGS_ENABLEFILE: "true"
+      MM_LOGSETTINGS_FILELOCATION: /var/log/mattermost
+    volumes:
+      - ${DOCKER_BASE:-$HOME/docker}/mattermost/data:/mattermost/data
+      - ${DOCKER_BASE:-$HOME/docker}/mattermost/logs:/var/log/mattermost
+      - ${DOCKER_BASE:-$HOME/docker}/mattermost/config:/mattermost/config
+      - ${DOCKER_BASE:-$HOME/docker}/mattermost/code:/mattermost/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8065/api/v4/system/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  jupyterhub:
+    build:
+      context: ..
+      dockerfile: docker/jupyterhub/Dockerfile
+    container_name: heinzel-jupyterhub
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12003:8000"
+    volumes:
+      - ${DOCKER_BASE:-$HOME/docker}/jupyterhub/config:/srv/jupyterhub
+      - ${DOCKER_BASE:-$HOME/docker}/jupyterhub/data:/data
+      - ${DOCKER_BASE:-$HOME/docker}/jupyterhub/logs:/var/log/jupyterhub
+      - ${DOCKER_BASE:-$HOME/docker}/jupyterhub/code:/srv/notebooks
+    environment:
+      JUPYTERHUB_CRYPT_KEY: ${JUPYTERHUB_CRYPT_KEY:?required}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/hub/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  caddy:
+    image: caddy:alpine
+    container_name: heinzel-caddy
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12004:80"
+    volumes:
+      - ../docker/caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DOCKER_BASE:-$HOME/docker}/caddy/data:/data
+      - ${DOCKER_BASE:-$HOME/docker}/caddy/logs:/var/log/caddy
+      - ${DOCKER_BASE:-$HOME/docker}/caddy/code:/srv
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: heinzel-portainer
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12005:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_BASE:-$HOME/docker}/portainer/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  gitea:
+    image: gitea/gitea:latest
+    container_name: heinzel-gitea
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12006:3000"
+      - "2222:22"
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: ${POSTGRES_USER:-heinzel}
+      GITEA__database__PASSWD: ${POSTGRES_PASSWORD}
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__ROOT_URL: http://localhost:12006
+      GITEA__server__HTTP_PORT: 3000
+      GITEA__server__SSH_PORT: 2222
+    volumes:
+      - ${DOCKER_BASE:-$HOME/docker}/gitea/data:/data
+      - ${DOCKER_BASE:-$HOME/docker}/gitea/config:/etc/gitea
+      - ${DOCKER_BASE:-$HOME/docker}/gitea/logs:/data/gitea/log
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+# ─── Provider (optional, per --profile) ──────────────────────────────────────
+
+  provider-openai:
+    profiles: [provider-openai]
+    build:
+      context: ..
+      dockerfile: docker/llm-provider/Dockerfile
+    container_name: heinzel-provider-openai
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12101:8000"
+    env_file: ../docker/llm-provider/.env
+    environment:
+      PROVIDER_TYPE: openai
+      CONFIG_PATH: /config/openai.yaml
+      LOG_DIR: /logs
+      LOG_REQUESTS: ${LOG_REQUESTS:-true}
+      DATABASE_URL: sqlite:////data/costs.db
+    volumes:
+      - ../config:/config:ro
+      - ${DOCKER_BASE:-$HOME/docker}/llm-provider/data:/data
+      - ${DOCKER_BASE:-$HOME/docker}/llm-provider/logs:/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  provider-anthropic:
+    profiles: [provider-anthropic]
+    build:
+      context: ..
+      dockerfile: docker/llm-provider/Dockerfile
+    container_name: heinzel-provider-anthropic
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12102:8000"
+    env_file: ../docker/llm-provider/.env
+    environment:
+      PROVIDER_TYPE: anthropic
+      CONFIG_PATH: /config/anthropic.yaml
+      LOG_DIR: /logs
+      LOG_REQUESTS: ${LOG_REQUESTS:-true}
+      DATABASE_URL: sqlite:////data/costs.db
+    volumes:
+      - ../config:/config:ro
+      - ${DOCKER_BASE:-$HOME/docker}/llm-provider/data:/data
+      - ${DOCKER_BASE:-$HOME/docker}/llm-provider/logs:/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  provider-google:
+    profiles: [provider-google]
+    build:
+      context: ..
+      dockerfile: docker/llm-provider/Dockerfile
+    container_name: heinzel-provider-google
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12103:8000"
+    env_file: ../docker/llm-provider/.env
+    environment:
+      PROVIDER_TYPE: google
+      CONFIG_PATH: /config/google.yaml
+      LOG_DIR: /logs
+      LOG_REQUESTS: ${LOG_REQUESTS:-true}
+      DATABASE_URL: sqlite:////data/costs.db
+    volumes:
+      - ../config:/config:ro
+      - ${DOCKER_BASE:-$HOME/docker}/llm-provider/data:/data
+      - ${DOCKER_BASE:-$HOME/docker}/llm-provider/logs:/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# ─── Frontend (optional, per --profile) ──────────────────────────────────────
+
+  chainlit:
+    profiles: [frontend]
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+    container_name: heinzel-chainlit
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12201:8000"
+    environment:
+      PROVIDER_URL: http://heinzel-provider-openai:8000
+      PROVIDER_TYPE: openai
