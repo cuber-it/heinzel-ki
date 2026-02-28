@@ -90,36 +90,6 @@ Aufruf: `http://<host>:12003`
 - Standard-Authenticator: beliebiger Benutzername / Passwort (DummyAuthenticator)
 - Für Produktion: Authenticator in `~/docker/jupyterhub/config/jupyterhub_config.py` anpassen
 
----
-
-## Optionale Services starten
-
-Provider und Frontend sind optional und werden per `--profile` aktiviert:
-
-```bash
-# OpenAI Provider
-docker compose -f docker/docker-compose.yml --profile provider-openai up -d
-
-# Anthropic Provider
-docker compose -f docker/docker-compose.yml --profile provider-anthropic up -d
-
-# Chainlit Frontend
-docker compose -f docker/docker-compose.yml --profile frontend up -d
-
-# Alles auf einmal
-docker compose -f docker/docker-compose.yml \
-  --profile provider-openai --profile frontend up -d
-```
-
-Provider können auch einzeln gestartet werden (mit eigenem Build):
-
-```bash
-docker compose -f docker/llm-provider/compose.openai.yml up --build -d
-docker compose -f docker/llm-provider/compose.anthropic.yml up --build -d
-docker compose -f docker/llm-provider/compose.google.yml up --build -d
-```
-
-API-Keys für Provider in `docker/llm-provider/.env` eintragen (Vorlage: `.env.example`).
 
 ---
 
@@ -160,3 +130,9 @@ Alle Services laufen im Docker-Netzwerk `heinzel` (wird beim ersten Start automa
 
 **Container unhealthy obwohl erreichbar:**
 → `docker logs <container>` prüfen. Healthcheck-Fehler sind oft harmlos beim ersten Start (start_period abwarten).
+
+---
+
+## Nächster Schritt
+
+LLM Provider und Chainlit Frontend → [docs/mvp-01.md](mvp-01.md)
