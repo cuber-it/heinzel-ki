@@ -1,0 +1,36 @@
+# H.E.I.N.Z.E.L. — LLM Provider: Google
+# Start:  docker compose -f docker/llm-provider/compose.google.yml up --build -d
+# Port:   12103
+
+networks:
+  heinzel:
+    external: true
+
+services:
+  provider-google:
+    build:
+      context: ../..
+      dockerfile: docker/llm-provider/Dockerfile
+    container_name: heinzel-provider-google
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12103:8000"
+    env_file: .env
+    environment:
+      PROVIDER_TYPE: google
+      CONFIG_PATH: /config/google.yaml
+      LOG_DIR: /logs
+      LOG_REQUESTS: ${LOG_REQUESTS:-true}
+      DATABASE_URL: sqlite:////data/costs.db
+    volumes:
+      - ../../config:/config:ro
+      - ./data:/data
+      - ./logs:/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

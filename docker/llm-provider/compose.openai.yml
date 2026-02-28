@@ -1,0 +1,36 @@
+# H.E.I.N.Z.E.L. — LLM Provider: OpenAI
+# Start:  docker compose -f docker/llm-provider/compose.openai.yml up --build -d
+# Port:   12101
+
+networks:
+  heinzel:
+    external: true
+
+services:
+  provider-openai:
+    build:
+      context: ../..
+      dockerfile: docker/llm-provider/Dockerfile
+    container_name: heinzel-provider-openai
+    restart: unless-stopped
+    networks:
+      - heinzel
+    ports:
+      - "12101:8000"
+    env_file: .env
+    environment:
+      PROVIDER_TYPE: openai
+      CONFIG_PATH: /config/openai.yaml
+      LOG_DIR: /logs
+      LOG_REQUESTS: ${LOG_REQUESTS:-true}
+      DATABASE_URL: sqlite:////data/costs.db
+    volumes:
+      - ../../config:/config:ro
+      - ./data:/data
+      - ./logs:/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

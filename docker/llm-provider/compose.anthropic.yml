@@ -1,29 +1,26 @@
-# H.E.I.N.Z.E.L. — LLM Provider Gateway (Produktion)
-# SQLite für Metriken, JSONL-Logs persistent in ./logs
-# API-Key via .env (OPENAI_API_KEY=...)
-#
-# Start:  docker compose up --build -d
-# Logs:   docker logs heinzel-provider-openai -f
-# Ports:  12101 — Provider API (Services-Range)
+# H.E.I.N.Z.E.L. — LLM Provider: Anthropic
+# Start:  docker compose -f docker/llm-provider/compose.anthropic.yml up --build -d
+# Port:   12102
 
 networks:
   heinzel:
     external: true
 
 services:
-  provider-openai:
+  provider-anthropic:
     build:
       context: ../..
-    container_name: heinzel-provider-openai
+      dockerfile: docker/llm-provider/Dockerfile
+    container_name: heinzel-provider-anthropic
     restart: unless-stopped
     networks:
       - heinzel
     ports:
-      - "12101:8000"
+      - "12102:8000"
     env_file: .env
     environment:
-      PROVIDER_TYPE: openai
-      CONFIG_PATH: /config/openai.yaml
+      PROVIDER_TYPE: anthropic
+      CONFIG_PATH: /config/anthropic.yaml
       LOG_DIR: /logs
       LOG_REQUESTS: ${LOG_REQUESTS:-true}
       DATABASE_URL: sqlite:////data/costs.db
