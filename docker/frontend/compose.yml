@@ -12,7 +12,7 @@ networks:
 services:
   chainlit:
     build:
-      context: ../../frontend
+      context: ../..
     container_name: heinzel-chainlit
     restart: unless-stopped
     networks:

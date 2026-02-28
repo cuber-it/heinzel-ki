@@ -2,7 +2,7 @@
 Tests fuer HNZ-001-0006: Log-Rotation und Speichermanagement
 """
 import sys, os, gzip, time
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/llm-provider"))
 
 
 def _make_old_file(path, content=b"x" * 1024, days_old=40):

@@ -3,7 +3,7 @@ Tests fuer HNZ-001-0011: Multimodal-Support (Bild, PDF, Dokument)
 """
 import os, sys
 os.environ.setdefault("LOG_DIR", "/tmp")
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/llm-provider"))
 
 from models import ChatMessage, TextBlock, ImageBlock, DocumentBlock
 

@@ -3,7 +3,7 @@ Tests fuer file_processor.py — Datei-Konvertierung
 """
 import os, sys, io, json, base64
 os.environ.setdefault("LOG_DIR", "/tmp")
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/llm-provider"))
 
 from file_processor import process_file, _is_text_extension, _extract_pdf, _extract_docx, _extract_xlsx, _extract_pptx
 

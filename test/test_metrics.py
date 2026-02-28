@@ -3,7 +3,7 @@ Tests für HNZ-001-0005: Technisches Metriken-Logging (DB-agnostisch)
 Alle Tests laufen gegen SQLite in tmp_path.
 """
 import sys, os, asyncio
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/llm-provider"))
 import pytest
 
 

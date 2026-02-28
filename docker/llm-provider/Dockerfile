@@ -5,10 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ .
+COPY src/llm-provider/ .
 
-ENV PROVIDER_TYPE=anthropic
-ENV CONFIG_PATH=/config/anthropic.yaml
+ENV PROVIDER_TYPE=openai
+ENV CONFIG_PATH=/config/openai.yaml
 ENV LOG_DIR=/data
 
 EXPOSE 8000

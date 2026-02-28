@@ -2,7 +2,7 @@
 Tests fuer HNZ-001-0008: Rate-Limiting und Retry-Logik
 """
 import sys, os, asyncio
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/llm-provider"))
 import pytest
 
 

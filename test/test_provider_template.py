@@ -3,7 +3,7 @@ Tests fuer HNZ-001-0007: Provider-Template Validierung via Dummy-Provider
 Beweist dass das Template-Muster funktioniert.
 """
 import sys, os, asyncio, json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/llm-provider"))
 
 import pytest
 import httpx
