@@ -1,136 +1,142 @@
-# MVP-01: LLM Provider Gateway
+# MVP-01: LLM Provider Gateway + Frontends
 
-Dieser MVP bringt den LLM Provider Gateway — eine einheitliche HTTP-API für OpenAI, Anthropic und Google — sowie CLI und Chainlit als Frontends.
-
----
-
-## Architektur
-
-```
-frontend/ (CLI oder Chainlit)
-    │ HTTP POST /chat oder /chat/stream
-    ▼
-Provider Gateway (src/)
-    ├── OpenAI Provider   → Port 12101
-    ├── Anthropic Provider
-    └── Google Provider
-```
+Dieser MVP baut auf MVP-00 auf und ergänzt den LLM Provider Gateway sowie das Chainlit Web-Frontend.
 
 ---
 
-## Schnellstart
+## Enthaltene Komponenten
 
-### 1. API-Key setzen
+| Komponente       | Port  | Beschreibung                            |
+|------------------|-------|-----------------------------------------|
+| Provider OpenAI  | 12101 | LLM Gateway für OpenAI-Modelle          |
+| Provider Anthropic | 12102 | LLM Gateway für Anthropic-Modelle     |
+| Provider Google  | 12103 | LLM Gateway für Google-Modelle          |
+| Chainlit         | 12201 | Web-Frontend für direkte Konversation   |
+
+---
+
+## Voraussetzung
+
+MVP-00 muss laufen:
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file .env up -d
+```
+
+---
+
+## API-Key eintragen
 
 ```bash
 cp docker/llm-provider/.env.example docker/llm-provider/.env
-# .env öffnen und OPENAI_API_KEY eintragen
-```
-
-### 2. Provider starten
-
-```bash
-cd docker/llm-provider
-docker compose up --build -d
-# Provider läuft auf http://localhost:12101
-```
-
-### 3. Chainlit starten
-
-```bash
-cd docker/frontend
-docker compose up --build -d
-# Web-UI: http://<host-ip>:12201
+# .env öffnen und Key eintragen:
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# GOOGLE_API_KEY=...
 ```
 
 ---
 
-## Provider-API
+## Provider starten
 
-| Endpoint | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/health` | GET | Status prüfen |
-| `/status` | GET | Provider-Info, verfügbare Modelle |
-| `/chat` | POST | Synchrone Antwort |
-| `/chat/stream` | POST | Server-Sent Events (Streaming) |
-| `/metrics/rate-limits` | GET | Retry-Metriken |
-
-### Beispiel
+### Einzeln über das zentrale Compose
 
 ```bash
-curl -s http://localhost:12101/chat \
+# OpenAI
+docker compose -f docker/docker-compose.yml --env-file .env --profile provider-openai up --build -d
+
+# Anthropic
+docker compose -f docker/docker-compose.yml --env-file .env --profile provider-anthropic up --build -d
+
+# Google
+docker compose -f docker/docker-compose.yml --env-file .env --profile provider-google up --build -d
+```
+
+### Oder direkt über die Provider-Compose-Dateien
+
+```bash
+docker compose -f docker/llm-provider/compose.openai.yml up --build -d
+docker compose -f docker/llm-provider/compose.anthropic.yml up --build -d
+docker compose -f docker/llm-provider/compose.google.yml up --build -d
+```
+
+---
+
+## Chainlit Frontend starten
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file .env --profile frontend up --build -d
+```
+
+Aufruf: `http://<host>:12201`
+
+Das Frontend verbindet sich standardmäßig mit dem OpenAI Provider (`http://heinzel-provider-openai:8000`).
+
+---
+
+## Provider API
+
+### Health-Check
+
+```bash
+curl http://localhost:12101/health
+# {"status":"ok","provider":"openai",...}
+```
+
+### Verfügbare Modelle
+
+```bash
+curl http://localhost:12101/models
+```
+
+### Chat-Anfrage
+
+```bash
+curl -X POST http://localhost:12101/chat \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hallo!"}]}'
+  -d '{
+    "messages": [{"role": "user", "content": "Hallo!"}],
+    "model": "gpt-4o-mini"
+  }'
 ```
 
 ---
 
-## Kommandos im Chat
-
-Mit `!`-Prefix direkt im Chat steuerbar:
-
-| Kommando | Beschreibung |
-|----------|--------------|
-| `!help` | Alle Kommandos anzeigen |
-| `!status` | Provider-Status |
-| `!set model=gpt-4o-mini` | Modell wechseln |
-| `!get model` | Aktuelles Modell abfragen |
-| `!dlglog` | Dialog-Log anzeigen |
-
----
-
-## Unterstützte Dateitypen
-
-| Typ | Formate | Verhalten |
-|-----|---------|-----------|
-| Bilder | JPEG, PNG, GIF, WEBP | Alle Provider nativ |
-| PDF | .pdf | Anthropic/Google nativ · OpenAI → Text-Extraktion |
-| Office | DOCX, XLSX, PPTX | Text-Extraktion (alle Provider) |
-| Text/Code | JSON, CSV, YAML, .py, .js, … | Direkt als Text |
-| Video/Audio | mp4, mp3, … | Fehlermeldung, kein Crash |
-
----
-
-## Provider-Matrix
-
-| Feature | OpenAI | Anthropic | Google |
-|---------|--------|-----------|--------|
-| Text | ✅ | ✅ | ✅ |
-| Streaming | ✅ | ✅ | ✅ |
-| Bilder nativ | ✅ | ✅ | ✅ |
-| PDF nativ | ❌ (Extraktion) | ✅ | ✅ |
-| Office | ✅ Extraktion | ✅ Extraktion | ✅ Extraktion |
-| Retry/Backoff | ✅ | ✅ | ✅ |
-
----
-
-## Provider wechseln
-
-In `docker/llm-provider/.env`:
+## Alles auf einmal
 
 ```bash
-PROVIDER_TYPE=anthropic   # oder: openai, google
+docker compose -f docker/docker-compose.yml --env-file .env \
+  --profile provider-openai --profile frontend up --build -d
 ```
-
-Dann neu starten: `docker compose up --build -d`
 
 ---
 
-## Lokale Entwicklung & Tests
+## Stack verwalten
 
 ```bash
-# Abhängigkeiten installieren
-pip install -r requirements.txt
+# Status
+docker compose -f docker/docker-compose.yml --profile provider-openai --profile frontend ps
 
-# Tests ausführen
-python3 -m pytest test/ -q
-# → 120 passed
+# Logs Provider
+docker logs heinzel-provider-openai -f
+
+# Logs Chainlit
+docker logs heinzel-chainlit -f
+
+# Provider stoppen
+docker compose -f docker/docker-compose.yml --profile provider-openai down
 ```
 
 ---
 
-## Bekannte Eigenheiten
+## Fehlerbehebung
 
-**OpenAI PDF:** Die Chat Completions API unterstützt kein natives PDF. Bildbasierte PDFs (Scans) liefern eine Fehlermeldung im Chat — für Scans Anthropic oder Google wählen.
+**Provider startet nicht:**
+→ API-Key in `docker/llm-provider/.env` prüfen.
 
-**Responses API (OpenAI):** Bewusst nicht genutzt — OpenAI-spezifisch, würde das einheitliche Interface zerstören.
+**Chainlit zeigt "Provider nicht erreichbar":**
+→ Provider muss vor Chainlit laufen. Reihenfolge: erst Provider, dann Frontend.
+
+**Build schlägt fehl:**
+→ `docker compose ... up --build` erzwingt Neu-Build. Bei Abhängigkeitsproblemen:
+   `docker system prune -f` und neu bauen.
