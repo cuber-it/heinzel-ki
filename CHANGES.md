@@ -1,96 +1,91 @@
 # Changelog
 
-Alle nennenswerten Änderungen werden hier dokumentiert.  
+Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
 ---
 
-## [MVP-02] — 2026-02-27 — LLM Provider Integration
+## [MVP-01] — 2026-02-28 — LLM Provider + Frontends
 
-Branch: `mvp-02` | Commits: `5262ae3`–`8bbdf46`
+Branch: `main` | Tests: 110 passing
 
-**Hinzugefügt**
-- `services/llm_provider/`: LLM Provider Gateway vollständig integriert
-- `AnthropicProvider`: Tier 1 (chat, stream, models, token_count) + Tier 2 (batches)
-- `OpenAIProvider`: Tier 1+2+3 (alle Endpoints inkl. Audio, Images, Moderation)
-- `GoogleProvider` (neu): Tier 1 (chat, stream, models, token_count) + Tier 2 (embeddings)
-- `src/config.py`: InstanceConfig — Ladereihenfolge ENV > instance.yaml > Default
-- `config/instance.yaml.example`: Vorlage für api_key, log_requests, database.url
-- `config/instance.yaml`: gitignored, enthält echte Secrets (nie committed)
-- `tests/test_provider_base.py`: 19 Basis-Tests, alle offline (kein API-Call)
-- `tests/conftest.py`: LOG_DIR auf tmp_path, DB-Env gecleart
-- `poc/cli.py`: Interaktive CLI mit Streaming, /log on|off, /stream, Multi-Turn
-- `poc/chainlit_app.py`: Browser-Chat-UI mit Streaming
-- `poc/Dockerfile`: Chainlit-Container
-- `docker/llm-provider-poc/compose.yml`: Standalone PoC, kein Postgres, SQLite
+### Hinzugefügt
 
-**Geändert**
-- `config/anthropic.yaml`: Modelle auf claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 aktualisiert
-- `config/openai.yaml`: Fiktive gpt-5-Modelle durch reale ersetzt (gpt-4o, o1, o3, o4-mini)
-- `config/google.yaml` (neu): Gemini-Modelle (2.5-pro, 2.0-flash, 2.0-flash-lite, 1.5-pro/flash)
-- `docker/llm-provider/compose.yml`: Pfade korrigiert, Google-Container (12003), LOG_REQUESTS ergänzt
-- `docker/llm-provider-poc/compose.yml`: Ports 12011 (Provider), 12017 (Chainlit)
-- `src/database.py`: SQLite-Fallback wenn DATABASE_URL nicht gesetzt, aiosqlite
-- `src/logger.py`: enabled-Flag, Dialog-Logging abschaltbar
-- `src/base.py`: Docstrings an ABC-Methoden, instance_config für LOG_REQUESTS
-- `src/main.py`: Google-Provider eingebunden, Config-Validierung, Runtime-Toggle /logging/enable|disable|status
-- `.gitignore`: **/instance.yaml ergänzt
-- `requirements.txt`: aiosqlite>=0.20.0 ergänzt
+- `src/llm-provider/` — Provider Gateway (OpenAI, Anthropic, Google)
+  - `base.py` — Abstrakte Basisklasse, unified interface (Tier 1/2/3)
+  - `models.py` — Pydantic-Modelle (ChatRequest, ChatResponse, ContentBlocks)
+  - `openai_provider.py` / `anthropic_provider.py` / `google_provider.py`
+  - `file_processor.py` — Datei-Konverter (Bilder, PDF, Office, Text)
+  - `config.py` — InstanceConfig: ENV > instance.yaml > Default
+  - `database.py` — SQLite Metriken-Logging (costs.db)
+  - `logger.py` — JSONL Session-Logging
+  - `log_reader.py` — Log-Abfrage mit Filtern (session_id, heinzel_id, task_id)
+  - `commands.py` — Provider-Kommandos: `!help`, `!status`, `!dlglog`
+  - `retention.py` — Log-Rotation und Cleanup
+  - `retry.py` — Exponential Backoff (max 3 Retries, 429/5xx)
+  - `provider_template/` — Template + ONBOARDING.md für neue Provider
+- `src/frontend/`
+  - `cli.py` — Interaktives Terminal-Frontend mit Streaming
+  - `chainlit_app.py` — Web-Chat-Interface
+- `docker/docker-compose.yml` — Zentrales Compose mit Profiles
+- `docker/llm-provider/` — Dockerfile + compose.{openai,anthropic,google}.yml
+- `docker/frontend/` — Dockerfile + compose.yml
+- `docs/mvp-01.md` — Setup-Doku: Provider/Frontend, API-Beispiele, Troubleshooting
+- `test/` — 110 Tests: provider_base, commands, metrics, multimodal, file_processor, retention, retry, logging
 
-**Designentscheidungen**
-- instance.yaml als Secret-Layer: ENV > YAML > Default, nie committed
-- Dialog-Logging: Default ON, zur Laufzeit togglebar via API, kein Container-Restart nötig
-- Cost-Logging immer aktiv (kein Toggle), separates Thema
-- Komprimierung der Logs: separater Service unter HNZ-099, nicht im Provider
-- SQLite als Default-DB: kein extra Service nötig für PoC und Einzelbetrieb
-- PoC-Ports: 12011 (Provider), 12017 (Chainlit) — 12001 war bereits belegt
+### Ports
 
-**Getestet**
-- Provider antwortet: `PoC funktioniert!` via gpt-4o-2024-08-06, 17/4 Tokens
-- Chainlit UI: HTTP 200 auf Port 12017
-- 19 Unit-Tests: alle grün
+| Service | Port |
+|---------|------|
+| Provider OpenAI | 12101 |
+| Provider Anthropic | 12102 |
+| Provider Google | 12103 |
+| Chainlit | 12201 |
 
-**Offene Punkte (nächste Stories)**
-- HNZ-099: Log-Komprimierung als separater Service (zstd)
-- Chainlit: Authentifizierung fehlt noch für Produktivbetrieb
-- Provider-Container der bestehenden Compose noch auf DATABASE_URL=PostgreSQL hardcodiert — sollte auf instance.yaml umgestellt werden
+### Designentscheidungen
+
+- Provider ist **stateless** — kein Session-State, kein globales session_params
+- Kommandos nur provider-level: `!help`, `!status`, `!dlglog` — Session-Kommandos gehören in HNZ-002 Core
+- Dialog-Logging: Default ON, zur Laufzeit togglebar via `!dlglog` oder `POST /logging/enable|disable`
+- Metriken-Logging: immer aktiv (SQLite), kein Toggle
+- Multimodal: Bilder nativ bei allen Providern; PDF nativ bei Anthropic+Google, via pypdf bei OpenAI
 
 ---
 
-## [MVP-00] — 2026-02-19/20 — Infrastruktur
+## [MVP-00] — 2026-02-19/28 — Basis-Infrastruktur
 
-Initiales Setup der Basis-Infrastruktur.
+Branch: `main` | Stack: theBrain
 
-**Hinzugefügt**
-- Modulare Docker-Compose-Struktur: eigenes `compose.yml` pro Service
-- Services: PostgreSQL 16, Mattermost Team Edition, JupyterHub, Caddy, Portainer
-- Haupt-`docker-compose.yml` mit `include:` und Bridge-Netzwerk `heinzel`
-- `scripts/setup.sh`: idempotentes Setup-Script mit Auto-Generierung von `.env` und Secrets
-- `.env.example` mit allen konfigurierbaren Variablen
-- `WORKFLOW.md`: Git-Branch-Strategie und MVP-Prozess
-- Healthchecks: `pg_isready` (Postgres), `mmctl` (Mattermost), `curl` (JupyterHub), `nc` (Caddy)
-- JupyterHub Custom-Image mit notebook, ipykernel, numpy, pandas, matplotlib
+### Hinzugefügt
 
-**Technische Entscheidungen**
-- Bind-Mounts statt Named Volumes — Daten bleiben kontrollierbar auf dem Host
-- Netzwerk `external: true` in Service-Composes — Netzwerk-Ownership liegt im Root-Compose
-- chown via Alpine-Container — kein sudo erforderlich (user in docker group)
-- Portainer ohne Healthcheck — distroless Image, kein Shell/Tools verfügbar
+- `docker/docker-compose.yml` — Zentrales Compose mit Profiles
+- Services: PostgreSQL (12001), Mattermost (12002), JupyterHub (12003), Caddy (12004), Portainer (12005), Gitea (12006)
+- `scripts/setup.sh` — Idempotentes Setup: .env generieren, Secrets, Verzeichnisse, Mattermost-Permissions
+- `.env.example` — Alle konfigurierbaren Variablen mit Platzhaltern
+- `config/ports.yaml` — Zentrales Port-Schema (12xxx)
+- `docs/mvp-00.md` — Vollständige Ersteinrichtung inkl. manueller Account-Schritte
 
-**Git-Commits**
-- `1503ffa` init: Projektstruktur, .gitignore, requirements.txt
-- `cd00d2f` feat: mvp-00 docker-compose, Dockerfiles, configs, setup.sh
-- `1849993` fix: setup.sh default Zielpfad ~/docker
-- `af184df` refactor: modulare compose.yml pro Service + include im Haupt-Compose
-- `fe76a1f` fix: version: Direktive aus allen compose.yml entfernt (deprecated)
-- `a450669` feat: setup.sh auto-generiert .env+Secrets, sudo chown Fallback
-- `36bb549` fix: chown via Alpine-Container statt sudo
-- `88b099a` fix: Portainer Healthcheck entfernt (kein wget/curl im Image)
-- `1277bd7` fix: Mattermost Healthcheck entfernt (kein curl im Image)
-- `9bd4c21` fix: Mattermost Image-Healthcheck deaktiviert
-- `00c757c` fix: Healthchecks professionell - mmctl/curl/nc je nach Image
-- `2fcc2d4` fix: Mattermost logs + client-plugins persistent gemountet
-- `0bc4bdd` fix: JupyterHub - jovyan User im Dockerfile, Config bereinigt
-- `35c51d8` feat: Gitea als sechsten Service hinzugefügt (Heinzel-eigener Git-Server)
-- `f59ee1f` feat: Gitea Auto-Setup im setup.sh, README aktualisiert
-- `bd0dc4d` sec: Alle Passwörter aus .env — keine Hardcodes im Script
+### Healthchecks
+
+Alle Container nutzen native Binaries statt curl/wget:
+- PostgreSQL: `pg_isready`
+- Mattermost: `/mattermost/bin/mattermost version`
+- Caddy: `caddy version`
+- Portainer: `/portainer --version`
+- JupyterHub: `curl localhost:8000`
+- Gitea: `gitea --version`
+
+### Designentscheidungen
+
+- Bind-Mounts statt Named Volumes
+- Netzwerk `heinzel` extern, Ownership im Root-Compose
+- Mattermost-Datenbank muss einmalig manuell angelegt werden (`CREATE DATABASE mattermost`)
+- setup.sh ohne hängenden Gitea-Auto-Setup — manuelle Ersteinrichtung per Browser
+
+---
+
+## [Housekeeping] — 2026-02-28 — Git-History bereinigt
+
+- Hostnamen und Benutzernamen aus kompletter Git-History entfernt (`git filter-repo`)
+- Force-push auf alle Branches (main, development, mvp-00)
+- Beide Maschinen neu geklont
