@@ -68,7 +68,7 @@ services:
       - ${DOCKER_BASE:-$HOME/docker}/mattermost/config:/mattermost/config
       - ${DOCKER_BASE:-$HOME/docker}/mattermost/code:/mattermost/plugins
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8065/api/v4/system/ping || exit 1"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8065/api/v4/system/ping"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -129,7 +129,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DOCKER_BASE:-$HOME/docker}/portainer/data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sk https://localhost:9443 | grep -q portainer || exit 1"]
+      test: ["CMD", "curl", "-sk", "-f", "https://localhost:9443"]
       interval: 30s
       timeout: 5s
       retries: 3
