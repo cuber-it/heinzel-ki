@@ -112,7 +112,7 @@ services:
       - ${DOCKER_BASE:-$HOME/docker}/caddy/logs:/var/log/caddy
       - ${DOCKER_BASE:-$HOME/docker}/caddy/code:/srv
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+      test: ["CMD-SHELL", "caddy version"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -129,7 +129,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DOCKER_BASE:-$HOME/docker}/portainer/data:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9000 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:9443 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
