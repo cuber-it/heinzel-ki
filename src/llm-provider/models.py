@@ -1,5 +1,5 @@
 """
-HEINZEL-HOST Provider Gateway – Pydantic Models
+H.E.I.N.Z.E.L. Provider Gateway – Pydantic Models
 All tiers: Core, Extended, Specialized
 """
 from pydantic import BaseModel

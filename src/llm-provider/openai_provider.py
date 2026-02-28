@@ -1,5 +1,5 @@
 """
-HEINZEL-HOST Provider – OpenAI
+H.E.I.N.Z.E.L. Provider – OpenAI
 Tier 1: chat, chat_stream, models, model_detail, token_count
 Tier 2: embeddings, batches
 Tier 3: moderation, audio (transcription, translation, speech),

@@ -1,5 +1,5 @@
 """
-HEINZEL-HOST Provider Gateway – BaseProvider
+H.E.I.N.Z.E.L. Provider Gateway – BaseProvider
 Alle Endpoints definiert. Default = 501 Not Implemented.
 Jeder Provider überschreibt was er kann.
 """

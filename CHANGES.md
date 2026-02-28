@@ -45,7 +45,7 @@ Branch: `mvp-02` | Commits: `5262ae3`–`8bbdf46`
 - SQLite als Default-DB: kein extra Service nötig für PoC und Einzelbetrieb
 - PoC-Ports: 12011 (Provider), 12017 (Chainlit) — 12001 war bereits belegt
 
-**Getestet auf HEINZEL-DEV**
+**Getestet**
 - Provider antwortet: `PoC funktioniert!` via gpt-4o-2024-08-06, 17/4 Tokens
 - Chainlit UI: HTTP 200 auf Port 12017
 - 19 Unit-Tests: alle grün
@@ -74,7 +74,7 @@ Initiales Setup der Basis-Infrastruktur.
 **Technische Entscheidungen**
 - Bind-Mounts statt Named Volumes — Daten bleiben kontrollierbar auf dem Host
 - Netzwerk `external: true` in Service-Composes — Netzwerk-Ownership liegt im Root-Compose
-- chown via Alpine-Container — kein sudo erforderlich (heinzel-user in docker group)
+- chown via Alpine-Container — kein sudo erforderlich (user in docker group)
 - Portainer ohne Healthcheck — distroless Image, kein Shell/Tools verfügbar
 
 **Git-Commits**

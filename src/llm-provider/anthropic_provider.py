@@ -1,5 +1,5 @@
 """
-HEINZEL-HOST Provider – Anthropic
+H.E.I.N.Z.E.L. Provider – Anthropic
 Tier 1: chat, chat_stream, models, model_detail, token_count
 Tier 2: batches
 Tier 3: –

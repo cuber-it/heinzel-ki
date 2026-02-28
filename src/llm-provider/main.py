@@ -1,5 +1,5 @@
 """
-HEINZEL-HOST Provider Gateway – FastAPI App
+H.E.I.N.Z.E.L. Provider Gateway – FastAPI App
 Version 2.0.0 – Alle Endpoints, alle Tiers.
 """
 import logging
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="HEINZEL-HOST Provider Gateway",
+    title="H.E.I.N.Z.E.L. Provider Gateway",
     description="Unified LLM Provider Gateway – All Tiers",
     version="2.0.0", lifespan=lifespan,
 )
