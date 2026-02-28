@@ -28,7 +28,6 @@ from config import instance_config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 provider: BaseProvider | None = None
-session_params: dict = {}  # In-Stream Kommando-Parameter (model, temperature, max_tokens)
 
 # Dialog-Logging: instance_config (ENV > YAML > Default: true)
 _log_requests = instance_config.log_requests()
@@ -247,7 +246,7 @@ async def metrics_summary(
 
 @app.get("/status")
 async def status():
-    """Provider-Status: health, model, logging, session_params, rate-limits."""
+    """Provider-Status: health, model, logging, rate-limits."""
     return {
         "provider":         provider.provider_name,
         "connected":        provider._connected,
@@ -255,7 +254,6 @@ async def status():
         "default_model":    provider.get_default_model(),
         "available_models": provider.get_models(),
         "dialog_logging":   provider.logger.enabled,
-        "session_params":   session_params,
         "rate_limit_hits":  len(getattr(provider, "_rate_limit_hits", [])),
         "retry_config":     provider.config.get("retry", {}),
     }
@@ -308,7 +306,7 @@ async def chat(request: ChatRequest):
         last = request.messages[-1]
         if last.role == "user" and is_command(str(last.content)):
             cmd, args = extract_command(str(last.content))
-            result = execute_command(cmd, args, provider, session_params)
+            result = execute_command(cmd, args, provider)
             from models import ChatResponse
             return ChatResponse(
                 content=f"[!{cmd}] {result}",
@@ -316,13 +314,6 @@ async def chat(request: ChatRequest):
                 usage={"input_tokens": 0, "output_tokens": 0},
                 provider=provider.provider_name,
             )
-    # Session-Params anwenden
-    if session_params.get("model"):
-        request = request.model_copy(update={"model": session_params["model"]})
-    if session_params.get("temperature") is not None:
-        request = request.model_copy(update={"temperature": session_params["temperature"]})
-    if session_params.get("max_tokens"):
-        request = request.model_copy(update={"max_tokens": session_params["max_tokens"]})
     try:
         return await provider.chat(request)
     except Exception as e:
@@ -336,7 +327,7 @@ async def chat_stream(request: ChatRequest):
         last = request.messages[-1]
         if last.role == "user" and is_command(str(last.content)):
             cmd, args = extract_command(str(last.content))
-            result = execute_command(cmd, args, provider, session_params)
+            result = execute_command(cmd, args, provider)
             from models import StreamChunk
             async def cmd_sse():
                 chunk = StreamChunk(type="command_response", command=cmd, result=result)
@@ -346,13 +337,6 @@ async def chat_stream(request: ChatRequest):
                 "Cache-Control": "no-cache", "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
             })
-    # Session-Params anwenden
-    if session_params.get("model"):
-        request = request.model_copy(update={"model": session_params["model"]})
-    if session_params.get("temperature") is not None:
-        request = request.model_copy(update={"temperature": session_params["temperature"]})
-    if session_params.get("max_tokens"):
-        request = request.model_copy(update={"max_tokens": session_params["max_tokens"]})
     async def sse():
         async for chunk in provider.chat_stream(request):
             yield f"data: {chunk.model_dump_json()}\n\n"
