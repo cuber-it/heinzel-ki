@@ -408,3 +408,78 @@ class TestAddOnIntegration:
         assert len(received_histories) == 1
         assert received_histories[0] is not None
         assert isinstance(received_histories[0], ContextHistory)
+
+
+# =============================================================================
+# chat_stream Tests
+# =============================================================================
+
+
+class TestChatStream:
+
+    @pytest.mark.asyncio
+    async def test_stream_liefert_chunks(self):
+        """chat_stream() liefert die Provider-Chunks direkt."""
+        heinzel, _ = make_heinzel("hallo welt foo")
+        await heinzel.connect()
+        chunks = []
+        async for chunk in heinzel.chat_stream("test"):
+            chunks.append(chunk)
+        assert len(chunks) == 3   # MockProvider splittet auf Leerzeichen
+        assert "".join(chunks) == "halloweltfoo"
+
+    @pytest.mark.asyncio
+    async def test_stream_laeuft_durch_vorphasen(self):
+        """Vorphasen werden vor dem Streaming durchlaufen."""
+        mutator = ContextMutatorAddOn()
+        received_system_prompts = []
+
+        class CaptureProvider(LLMProvider):
+            async def chat(self, messages, system_prompt="", model="") -> str:
+                return ""
+            async def stream(self, messages, system_prompt="", model=""):
+                received_system_prompts.append(system_prompt)
+                yield "chunk"
+
+        heinzel = BaseHeinzel(provider=CaptureProvider(), name="test")
+        heinzel.register_addon(mutator, hooks={HookPoint.ON_CONTEXT_BUILD})
+        await heinzel.connect()
+
+        async for _ in heinzel.chat_stream("test"):
+            pass
+
+        assert received_system_prompts == ["Du bist ein hilfreicher Assistent."]
+
+    @pytest.mark.asyncio
+    async def test_stream_gibt_nie_exception(self):
+        """chat_stream() liefert Fehler-Chunk statt Exception."""
+        heinzel = BaseHeinzel(provider=BrokenProvider(), name="broken")
+        await heinzel.connect()
+        chunks = []
+        async for chunk in heinzel.chat_stream("test"):
+            chunks.append(chunk)
+        assert len(chunks) >= 1
+        assert any("[" in c for c in chunks)
+
+    @pytest.mark.asyncio
+    async def test_stream_session_id_fallback(self):
+        """Ohne session_id: UUID wird generiert."""
+        heinzel, _ = make_heinzel("x")
+        await heinzel.connect()
+        # Kein Fehler = genug für diesen Test
+        async for _ in heinzel.chat_stream("test"):
+            pass
+
+    @pytest.mark.asyncio
+    async def test_config_path_parameter_vorhanden(self):
+        """config_path=None ist akzeptierter Parameter."""
+        provider = MockProvider()
+        h = BaseHeinzel(provider=provider, name="test", config_path=None)
+        assert h.config == {}
+
+    @pytest.mark.asyncio
+    async def test_config_dict_hat_vorrang(self):
+        """Explizites config-dict wird direkt verwendet."""
+        provider = MockProvider()
+        h = BaseHeinzel(provider=provider, name="test", config={"key": "val"})
+        assert h.config == {"key": "val"}

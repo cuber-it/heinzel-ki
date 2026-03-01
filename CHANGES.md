@@ -224,3 +224,10 @@ Commit: 5dc0aaa
 
 ### Testergebnis
 323 Tests grün (vorher 302, +21 neue)
+
+## HNZ-002-0006 Nachtrag — chat_stream + config_path
+
+- chat_stream() vollständig durch Pipeline verdrahtet (Vor- + Nachphasen)
+- BaseHeinzel.__init__: config_path=None Parameter + _load_config() Hilfsmethode
+- 6 neue Tests (TestChatStream + config-Tests), gesamt 27 fuer 0006
+- 329 Tests gruen

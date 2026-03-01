@@ -92,11 +92,12 @@ class BaseHeinzel:
         name: str = "heinzel",
         heinzel_id: str | None = None,
         config: dict[str, Any] | None = None,
+        config_path: str | None = None,
     ) -> None:
         self._provider = provider
         self._name = name
         self._heinzel_id = heinzel_id or str(uuid4())
-        self._config: dict[str, Any] = config or {}
+        self._config: dict[str, Any] = self._load_config(config, config_path)
         self._router = AddOnRouter()
         self._addons: list[AddOn] = []   # Reihenfolge fuer Lifecycle
         self._connected = False
@@ -179,16 +180,101 @@ class BaseHeinzel:
     async def chat_stream(
         self, message: str, session_id: str | None = None
     ) -> AsyncGenerator[str, None]:
-        """Streaming Chat-Runde. Chunks werden direkt geliefert.
+        """Streaming Chat-Runde durch die volle Pipeline.
 
-        TODO HNZ-002-0008: Streaming korrekt mit Pipeline verdrahten.
-        Aktuell: Direkt an Provider delegiert als Fallback.
+        Ablauf:
+          1. Vorphasen (SESSION_START → CONTEXT_READY) — AddOns koennen
+             system_prompt, messages etc. setzen
+          2. ON_LLM_REQUEST dispatchen
+          3. Provider streamen — Chunks direkt yielden, stream_buffer akkumulieren
+          4. Nachphase (ON_LLM_RESPONSE → SESSION_END) — AddOns koennen
+             auf das vollstaendige Ergebnis reagieren
         """
         try:
             message = await self.on_before_chat(message)
-            msgs = self._build_messages(message)
-            async for chunk in self._provider.stream(messages=msgs):
-                yield chunk
+            sid = session_id or str(uuid4())
+            ctx_history = ContextHistory()
+
+            # Initialer Snapshot
+            ctx = PipelineContext(
+                raw_input=message,
+                parsed_input=message,
+                session_id=sid,
+                heinzel_id=self._heinzel_id,
+                phase=HookPoint.ON_SESSION_START,
+            )
+            ctx_history.push(ctx)
+
+            # --- Vorphasen (synchron, kein Yield) ---
+            halted = False
+            for phase in [
+                HookPoint.ON_INPUT,
+                HookPoint.ON_INPUT_PARSED,
+                HookPoint.ON_MEMORY_QUERY,
+                HookPoint.ON_CONTEXT_BUILD,
+                HookPoint.ON_CONTEXT_READY,
+            ]:
+                ctx, halted = await self._phase(phase, ctx, ctx_history)
+                if halted:
+                    break
+                if phase == HookPoint.ON_MEMORY_QUERY:
+                    memory_phase = (
+                        HookPoint.ON_MEMORY_HIT
+                        if ctx.memory_results
+                        else HookPoint.ON_MEMORY_MISS
+                    )
+                    ctx, halted = await self._phase(memory_phase, ctx, ctx_history)
+                    if ctx.short_circuit or halted:
+                        halted = True
+                        break
+
+            if halted:
+                return
+
+            # ON_LLM_REQUEST
+            ctx, halted = await self._phase(HookPoint.ON_LLM_REQUEST, ctx, ctx_history)
+            if halted:
+                return
+
+            # --- Streaming ---
+            messages = self._build_messages_from_ctx(ctx)
+            stream_buffer = ""
+            try:
+                async for chunk in self._provider.stream(
+                    messages=messages,
+                    system_prompt=ctx.system_prompt,
+                    model=ctx.model,
+                ):
+                    stream_buffer += chunk
+                    yield chunk
+            except Exception as exc:
+                logger.error("Provider-Stream-Fehler: %s", exc, exc_info=True)
+                error_chunk = f"[Fehler: {exc}]"
+                stream_buffer += error_chunk
+                yield error_chunk
+
+            # --- Nachphase (synchron, kein Yield) ---
+            ctx = ctx.evolve(
+                phase=HookPoint.ON_LLM_RESPONSE,
+                response=stream_buffer,
+                stream_buffer=stream_buffer,
+                loop_done=True,
+            )
+            ctx_history.push(ctx)
+            ctx, _ = await self._dispatch_and_apply(
+                HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
+            )
+
+            for phase in [
+                HookPoint.ON_LOOP_END,
+                HookPoint.ON_OUTPUT,
+                HookPoint.ON_OUTPUT_SENT,
+                HookPoint.ON_STORE,
+                HookPoint.ON_STORED,
+                HookPoint.ON_SESSION_END,
+            ]:
+                ctx, _ = await self._phase(phase, ctx, ctx_history)
+
         except Exception as exc:
             logger.error("chat_stream() Fehler: %s", exc, exc_info=True)
             yield f"[Fehler: {exc}]"
@@ -388,3 +474,28 @@ class BaseHeinzel:
         if ctx.messages:
             return [{"role": m.role, "content": m.content} for m in ctx.messages]
         return [{"role": "user", "content": ctx.parsed_input or ctx.raw_input}]
+
+    @staticmethod
+    def _load_config(
+        config: dict[str, Any] | None,
+        config_path: str | None,
+    ) -> dict[str, Any]:
+        """Config laden: direkt uebergebenes dict hat Vorrang vor Datei.
+
+        config_path-Support (YAML) folgt vollstaendig in HNZ-002-0007.
+        Aktuell: Datei wird gelesen wenn vorhanden, Fehler werden geloggt.
+        """
+        if config is not None:
+            return config
+        if config_path is not None:
+            try:
+                import yaml  # type: ignore[import]
+                with open(config_path) as f:
+                    loaded = yaml.safe_load(f) or {}
+                logger.info("Config geladen aus %s", config_path)
+                return loaded
+            except FileNotFoundError:
+                logger.warning("Config-Datei nicht gefunden: %s", config_path)
+            except Exception as exc:
+                logger.error("Config-Ladefehler (%s): %s", config_path, exc)
+        return {}
