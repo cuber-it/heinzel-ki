@@ -92,6 +92,8 @@ class _DialogLogger:
         self.log_addons: bool = bool(log_cfg.get("log_addons", False))
         self.log_mcp: bool = bool(log_cfg.get("log_mcp", False))
         self._enabled = True
+        self._turn_nr: int = 0    # Laufende Nummer: USER+HEINZEL teilen sich eine Nr.
+        self._path: Path | None = None
 
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +107,11 @@ class _DialogLogger:
             self._enabled = False
             self._file = None
 
+    @property
+    def log_path(self) -> Path | None:
+        """Pfad zur Logdatei — fuer CLI-Ausgabe und !history."""
+        return self._path
+
     def _write(self, line: str) -> None:
         if not self._enabled or self._file is None:
             return
@@ -115,10 +122,11 @@ class _DialogLogger:
             logging.getLogger(__name__).error("DialogLogger Schreibfehler: %s", exc)
 
     def log_user(self, message: str) -> None:
-        self._write(f"USER: {message}")
+        self._turn_nr += 1
+        self._write(f"#{self._turn_nr:04d} USER: {message}")
 
     def log_heinzel(self, response: str) -> None:
-        self._write(f"HEINZEL: {response}")
+        self._write(f"#{self._turn_nr:04d} HEINZEL: {response}")
 
     def log_addon(self, addon_name: str, hook: str, had_changes: bool) -> None:
         if not self.log_addons:

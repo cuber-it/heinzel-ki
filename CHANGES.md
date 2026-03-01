@@ -240,3 +240,14 @@ Commit: 5dc0aaa
 - Jeder Heinzel bekommt eigene Logdatei: {log_dir}/{heinzel_id}.log
 - Config-Schema: logging.log_dir / log_addons / log_mcp
 - 5 neue Tests (TestDialogLogger), gesamt 334 gruen
+
+## HNZ-002-0006 Nachtrag 3 — DialogLogger lfd. Nummer + heinzel_cli.py
+
+- _DialogLogger: laufende Turn-Nummer (#0001, #0002, ...) fuer USER+HEINZEL
+- _DialogLogger: log_path Property fuer CLI-Zugriff
+- src/frontend/heinzel_cli.py: erster lebender Heinzel
+  - HttpLLMProvider gegen Provider-Service (http://localhost:12002)
+  - REPL-Loop: !quit / !history / freier Chat via chat_stream()
+  - Config aus YAML (--config) oder Hardcode-Defaults
+  - Startup-Info: Name, Provider-URL, Log-Pfad
+- 334 Tests gruen
