@@ -8,7 +8,7 @@ Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
 ## [MVP-002] — 2026-03-01 — HNZ-002-0003: AddOnRouter
 
-Commit: (folgt)
+Commit: be6dc46
 
 ### src/core/router.py (neu)
 - AddOnRouter: selektive HookPoint-Registrierung (register/unregister)
