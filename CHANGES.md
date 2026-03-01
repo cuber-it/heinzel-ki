@@ -162,7 +162,7 @@ Branch: `mvp-002` | Tests: 30 passing
 
 ## [MVP-002] — 2026-03-01 — HNZ-002-0004+0005: MCPToolsRouter AddOn
 
-Commit: TBD
+Commit: 5dc0aaa
 
 ### Architektur-Entscheid
 - MCPToolsRouter ist ein AddOn (erbt von AddOn) — kein separates MCPAddOn nötig
