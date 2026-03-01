@@ -231,3 +231,12 @@ Commit: 5dc0aaa
 - BaseHeinzel.__init__: config_path=None Parameter + _load_config() Hilfsmethode
 - 6 neue Tests (TestChatStream + config-Tests), gesamt 27 fuer 0006
 - 329 Tests gruen
+
+## HNZ-002-0006 Nachtrag 2 — natives DialogLogging
+
+- _DialogLogger: natives Dialoglogging im Core (keine AddOn-Option)
+- Immer: USER bei ON_INPUT, HEINZEL bei ON_OUTPUT_SENT
+- Optional (Config): log_addons, log_mcp
+- Jeder Heinzel bekommt eigene Logdatei: {log_dir}/{heinzel_id}.log
+- Config-Schema: logging.log_dir / log_addons / log_mcp
+- 5 neue Tests (TestDialogLogger), gesamt 334 gruen

@@ -483,3 +483,92 @@ class TestChatStream:
         provider = MockProvider()
         h = BaseHeinzel(provider=provider, name="test", config={"key": "val"})
         assert h.config == {"key": "val"}
+
+
+# =============================================================================
+# DialogLogger Tests
+# =============================================================================
+
+
+class TestDialogLogger:
+
+    @pytest.mark.asyncio
+    async def test_log_datei_wird_angelegt(self, tmp_path):
+        provider = MockProvider("antwort")
+        h = BaseHeinzel(
+            provider=provider, name="test",
+            config={"logging": {"log_dir": str(tmp_path)}}
+        )
+        await h.connect()
+        await h.chat("hallo")
+        await h.disconnect()
+
+        logs = list(tmp_path.glob("*.log"))
+        assert len(logs) == 1
+
+    @pytest.mark.asyncio
+    async def test_log_enthaelt_user_und_heinzel(self, tmp_path):
+        provider = MockProvider("test antwort")
+        h = BaseHeinzel(
+            provider=provider, name="test",
+            config={"logging": {"log_dir": str(tmp_path)}}
+        )
+        await h.connect()
+        await h.chat("was geht")
+        await h.disconnect()
+
+        log_content = list(tmp_path.glob("*.log"))[0].read_text()
+        assert "USER: was geht" in log_content
+        assert "HEINZEL: test antwort" in log_content
+
+    @pytest.mark.asyncio
+    async def test_log_stream_enthaelt_dialog(self, tmp_path):
+        provider = MockProvider("chunk1 chunk2")
+        h = BaseHeinzel(
+            provider=provider, name="test",
+            config={"logging": {"log_dir": str(tmp_path)}}
+        )
+        await h.connect()
+        async for _ in h.chat_stream("stream test"):
+            pass
+        await h.disconnect()
+
+        log_content = list(tmp_path.glob("*.log"))[0].read_text()
+        assert "USER: stream test" in log_content
+        assert "HEINZEL:" in log_content
+
+    @pytest.mark.asyncio
+    async def test_log_hat_session_marker(self, tmp_path):
+        provider = MockProvider("x")
+        h = BaseHeinzel(
+            provider=provider, name="test",
+            config={"logging": {"log_dir": str(tmp_path)}}
+        )
+        await h.connect()
+        await h.chat("test")
+        await h.disconnect()
+
+        log_content = list(tmp_path.glob("*.log"))[0].read_text()
+        assert "Session Start" in log_content
+        assert "Session End" in log_content
+
+    @pytest.mark.asyncio
+    async def test_jeder_heinzel_hat_eigene_logdatei(self, tmp_path):
+        p = MockProvider("x")
+        h1 = BaseHeinzel(provider=p, name="h1", heinzel_id="id-001",
+                         config={"logging": {"log_dir": str(tmp_path)}})
+        h2 = BaseHeinzel(provider=p, name="h2", heinzel_id="id-002",
+                         config={"logging": {"log_dir": str(tmp_path)}})
+        await h1.connect()
+        await h2.connect()
+        await h1.chat("von h1")
+        await h2.chat("von h2")
+        await h1.disconnect()
+        await h2.disconnect()
+
+        logs = {f.name: f.read_text() for f in tmp_path.glob("*.log")}
+        assert "id-001.log" in logs
+        assert "id-002.log" in logs
+        assert "von h1" in logs["id-001.log"]
+        assert "von h2" in logs["id-002.log"]
+        assert "von h1" not in logs["id-002.log"]
