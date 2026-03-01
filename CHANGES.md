@@ -6,6 +6,26 @@ Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 ---
 
 
+## [MVP-002] — 2026-03-01 — HNZ-002-0003: AddOnRouter
+
+Commit: (folgt)
+
+### src/core/router.py (neu)
+- AddOnRouter: selektive HookPoint-Registrierung (register/unregister)
+- dispatch(HookPoint, ctx) -> list[AddOnResult]: Option A (Context-Kette + alle Results)
+- Dependency-Resolver beim register(): AddOnDependencyError wenn nicht registriert
+- Sortierung: priority aufsteigend, dann Registrierungsreihenfolge (bisect.insort)
+- Fehler-Isolation: Exception -> AddOnError in results -> ON_ERROR dispatcht (nicht rekursiv)
+- halt=True: bricht Chain für diesen Hook ab
+- get(), list_registered(), is_registered()
+- asyncio-safe
+
+### test/core/test_router.py (neu)
+- 25 Tests: register, unregister, dispatch-order, priority, halt, Fehler-Isolation, ON_ERROR, Concurrency, Performance
+
+### src/core/__init__.py
+- AddOnRouter exportiert
+
 ## [MVP-002 / HNZ-002-0002] — 2026-03-01 — AddOn Interface + Lifecycle + Dispatch
 
 Branch: `mvp-002` | Commit: 1cf7bf8 | Tests: 75 passing (105 gesamt)
