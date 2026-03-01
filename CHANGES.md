@@ -8,7 +8,7 @@ Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
 ## [MVP-002 / HNZ-002-0002] — 2026-03-01 — AddOn Interface + Lifecycle + Dispatch
 
-Branch: `mvp-002` | Commit: TBD | Tests: 75 passing (105 gesamt)
+Branch: `mvp-002` | Commit: 1cf7bf8 | Tests: 75 passing (105 gesamt)
 
 ### Hinzugefügt
 
