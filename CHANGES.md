@@ -5,6 +5,31 @@ Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
 ---
 
+
+## [MVP-002 / HNZ-002-0002] — 2026-03-01 — AddOn Interface + Lifecycle + Dispatch
+
+Branch: `mvp-002` | Commit: TBD | Tests: 75 passing (105 gesamt)
+
+### Hinzugefügt
+
+- `src/core/addon.py` — AddOn ABC, AddOnManager, AddOnState
+  - `AddOn` abstrakte Basisklasse mit 23 Hook-Methoden als No-Op (deckt alle HookPoints ab)
+  - Klassenattribute: `name`, `version`, `dependencies`
+  - Lifecycle: `on_attach(heinzel)`, `on_detach(heinzel)`, `is_available()`
+  - `AddOnManager` — Priority-Dispatch, Dependency-Check, halt-Flag, Fehler-Isolation
+  - Exceptions aus `core.exceptions` importiert (kein Duplikat)
+- `test/core/test_addon.py` — 75 Tests: State, Hooks, Compliance, Lifecycle, Dispatch
+- `docs/ADDON_GUIDE.md` — vollständige Entwickler-Dokumentation
+- `pytest.ini` — neu, asyncio_mode=auto
+
+### Klärungen / Designentscheidungen
+
+- `heinzel_core` war ein Artefakt — korrekter Importpfad ist `core.addon`
+- `PipelineContext` ist frozen Pydantic — Mutation via `model_copy(update={})`, kein `with_update()`
+- `AddOnManager` (diese Story) ≠ `AddOnRouter` (HNZ-002-0003) — Router hat selektive HookPoint-Registrierung
+
+---
+
 ## [MVP-01] — 2026-02-28 — LLM Provider + Frontends
 
 Branch: `main` | Tests: 110 passing
