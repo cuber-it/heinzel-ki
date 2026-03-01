@@ -44,7 +44,7 @@ class PriorityAddOn(AddOn):
         self.tag = tag
         self.calls: list[str] = []
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         self.calls.append(self.tag)
         return AddOnResult(modified_ctx=ctx)
 
@@ -53,7 +53,7 @@ class MutatingAddOn(AddOn):
     """AddOn das den Context modifiziert."""
     name = "mutating"
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         new_ctx = ctx.model_copy(update={"raw_input": "mutated"})
         return AddOnResult(modified_ctx=new_ctx)
 
@@ -62,7 +62,7 @@ class HaltingAddOn(AddOn):
     """AddOn das die Dispatch-Chain abbricht."""
     name = "halting"
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         return AddOnResult(modified_ctx=ctx, halt=True)
 
 
@@ -70,7 +70,7 @@ class FailingAddOn(AddOn):
     """AddOn das in einem Hook eine Exception wirft."""
     name = "failing"
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         raise RuntimeError("boom")
 
 
@@ -95,7 +95,7 @@ class UnavailableAddOn(AddOn):
     def is_available(self) -> bool:
         return False
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         # Darf nie aufgerufen werden
         raise AssertionError("should not be called")
 
@@ -423,7 +423,7 @@ class TestAddOnManagerDispatch:
                 super().__init__()
                 self._tag = tag
 
-            async def on_input(self, ctx):
+            async def on_input(self, ctx: PipelineContext, history=None):
                 call_order.append(self._tag)
                 return AddOnResult(modified_ctx=ctx)
 

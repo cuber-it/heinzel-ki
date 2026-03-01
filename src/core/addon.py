@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from .exceptions import AddOnDependencyError, AddOnError, AddOnLoadError
 from .models import (
     AddOnResult,
+    ContextHistory,
     PipelineContext,
 )
 
@@ -66,7 +67,7 @@ class AddOn(ABC):
             version = '0.2.0'
             dependencies = ['web_search']
 
-            async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+            async def on_input(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
                 # ctx modifizieren, dann zurückgeben
                 new_ctx = ctx.model_copy(update={"raw_input": ctx.raw_input.strip()})
                 return AddOnResult(modified_ctx=new_ctx)
@@ -133,95 +134,95 @@ class AddOn(ABC):
     # Naming folgt HookPoint-Enum (snake_case ohne Prefix)
     # -------------------------------------------------------------------------
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Roheingabe empfangen."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_input_parsed(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input_parsed(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Eingabe wurde geparst."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_memory_query(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_memory_query(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Vor Gedächtnisabfrage."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_memory_hit(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_memory_hit(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Gedächtnis-Treffer gefunden."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_memory_miss(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_memory_miss(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Kein Gedächtnis-Treffer."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_context_build(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_context_build(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Kontext wird aufgebaut."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_context_ready(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_context_ready(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Kontext ist fertig — kurz vor LLM-Call."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_llm_request(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_llm_request(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: LLM-Request wird abgeschickt."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_stream_chunk(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_stream_chunk(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Ein gestreamter Chunk ist angekommen."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_thinking_step(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_thinking_step(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Ein Reasoning-Step ist abgeschlossen."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_llm_response(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_llm_response(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: LLM-Antwort vollständig empfangen."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_tool_request(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_tool_request(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: LLM möchte ein Tool aufrufen."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_tool_result(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_tool_result(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Tool-Ergebnis ist zurück."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_tool_error(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_tool_error(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Tool-Aufruf fehlgeschlagen."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_loop_iteration(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_loop_iteration(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Eine Reasoning-Loop-Iteration beginnt."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_loop_end(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_loop_end(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Reasoning-Loop beendet."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_output(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_output(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Ausgabe wird vorbereitet."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_output_sent(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_output_sent(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Ausgabe wurde gesendet."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_store(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_store(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Kontext wird persistiert."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_stored(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_stored(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Kontext wurde persistiert."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_session_start(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_session_start(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Session beginnt."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_session_end(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_session_end(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Session endet."""
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_error(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_error(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Fehler in der Pipeline."""
         return AddOnResult(modified_ctx=ctx)
 
@@ -364,6 +365,7 @@ class AddOnManager:
         self,
         hook_name: str,
         ctx: PipelineContext,
+        history: ContextHistory | None = None,
     ) -> PipelineContext:
         """Dispatcht einen Hook an alle attached + available AddOns.
 
@@ -387,7 +389,7 @@ class AddOnManager:
                 continue
 
             try:
-                result: AddOnResult = await hook(ctx)
+                result: AddOnResult = await hook(ctx, history)
             except Exception as exc:
                 # Fehler isolieren — andere AddOns nicht beeinträchtigen
                 # TODO: Logging ergänzen wenn Logger-Infrastruktur steht (HNZ-003+)

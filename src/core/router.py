@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .exceptions import AddOnDependencyError, AddOnError
-from .models import AddOnResult, HookPoint, PipelineContext
+from .models import AddOnResult, ContextHistory, HookPoint, PipelineContext
 
 if TYPE_CHECKING:
     from .addon import AddOn
@@ -172,6 +172,7 @@ class AddOnRouter:
         self,
         hook_point: HookPoint,
         ctx: PipelineContext,
+        history: ContextHistory | None = None,
     ) -> list[AddOnResult]:
         """Dispatcht einen HookPoint an alle dafür registrierten AddOns.
 
@@ -181,17 +182,19 @@ class AddOnRouter:
         Args:
             hook_point: Der HookPoint der dispatcht werden soll
             ctx:        Initialer PipelineContext
+            history:    Optionale ContextHistory — AddOns können lesen, nie schreiben
 
         Returns:
             list[AddOnResult] — Ein Result pro aufgerufenem AddOn.
             Leere Liste wenn kein AddOn für diesen Hook registriert ist.
         """
-        return await self._dispatch_internal(hook_point, ctx, is_error_dispatch=False)
+        return await self._dispatch_internal(hook_point, ctx, history, is_error_dispatch=False)
 
     async def _dispatch_internal(
         self,
         hook_point: HookPoint,
         ctx: PipelineContext,
+        history: ContextHistory | None,
         is_error_dispatch: bool,
     ) -> list[AddOnResult]:
         """Interne Dispatch-Logik. is_error_dispatch verhindert rekursive ON_ERROR-Kette."""
@@ -209,7 +212,7 @@ class AddOnRouter:
                 continue  # Sollte nicht vorkommen — AddOn hat immer No-Op Defaults
 
             try:
-                result: AddOnResult = await hook(ctx)
+                result: AddOnResult = await hook(ctx, history)
             except Exception as exc:
                 # Fehler isolieren: als AddOnError in results aufnehmen
                 error_result = AddOnResult(
@@ -227,7 +230,7 @@ class AddOnRouter:
                 # ON_ERROR dispatchen — aber nicht rekursiv
                 if not is_error_dispatch and hook_point != HookPoint.ON_ERROR:
                     await self._dispatch_internal(
-                        HookPoint.ON_ERROR, ctx, is_error_dispatch=True
+                        HookPoint.ON_ERROR, ctx, history, is_error_dispatch=True
                     )
                 continue
 

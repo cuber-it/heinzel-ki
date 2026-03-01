@@ -201,3 +201,23 @@ Commit: 5dc0aaa
 - Adressierung via target:server:tool statt MCPServer-Objekt
 - Export unter addons.mcp_router statt heinzel_core.mcp (Core bleibt clean)
 - Approval-System über Story-Scope hinaus — kandidiert für eigenes Epic
+
+## HNZ-002-0006 — BaseHeinzel + Pipeline Engine
+
+### Änderungen
+- `src/core/base.py`: BaseHeinzel + LLMProvider — Lifecycle, Pipeline-Loop, chat/chat_stream
+- `src/core/addon.py`: Alle Hook-Signaturen um `history: ContextHistory | None = None` erweitert
+- `src/core/router.py`: dispatch() + _dispatch_internal() um `history`-Parameter erweitert
+- `src/addons/mcp_router/router.py`: on_tool_request Signatur angepasst
+- `src/core/__init__.py`: BaseHeinzel + LLMProvider exportiert
+- `test/core/test_base_heinzel.py`: 21 Tests (Lifecycle, Pipeline, Loop, Chat, Halt, AddOn-Integration)
+- `test/core/test_addon.py`, `test/core/test_router.py`: Hook-Signaturen in Test-Fixtures gefixt
+
+### Design-Entscheide
+- Initialer Snapshot: phase=ON_SESSION_START (Session startet vor Input)
+- loop_done=True als Fallback in _call_provider (kein LoopControl-AddOn nötig)
+- history optional (None = kein History-Kontext — für Backward-Compat)
+- AddOnManager.dispatch() ebenfalls um history erweitert (Konsistenz)
+
+### Testergebnis
+323 Tests grün (vorher 302, +21 neue)

@@ -26,7 +26,7 @@ from abc import abstractmethod
 from typing import Any
 
 from core.addon import AddOn
-from core.models import AddOnResult, PipelineContext
+from core.models import AddOnResult, ContextHistory, PipelineContext
 from core.models.base import ToolCall as PipelineToolCall, ToolResult as PipelineToolResult
 from .models import ApprovalPolicy, KnownTool, ServerEntry, ToolAddress, ToolCall, ToolResult
 
@@ -230,7 +230,7 @@ class MCPToolsRouter(AddOn):
     # AddOn Hook
     # -------------------------------------------------------------------------
 
-    async def on_tool_request(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_tool_request(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Verarbeitet alle offenen Tool-Requests im PipelineContext.
 
         - Bekannte Tools + approved:  ausfuehren -> ctx.tool_results

@@ -43,15 +43,15 @@ class TrackingAddOn(AddOn):
         super().__init__()
         self.calls: list[str] = []
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         self.calls.append(f"{self.name}:on_input")
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_output(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_output(self, ctx: PipelineContext, history=None) -> AddOnResult:
         self.calls.append(f"{self.name}:on_output")
         return AddOnResult(modified_ctx=ctx)
 
-    async def on_error(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_error(self, ctx: PipelineContext, history=None) -> AddOnResult:
         self.calls.append(f"{self.name}:on_error")
         return AddOnResult(modified_ctx=ctx)
 
@@ -64,7 +64,7 @@ class MutatingAddOn(AddOn):
         super().__init__()
         self.suffix = suffix
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         new_ctx = ctx.model_copy(update={"raw_input": ctx.raw_input + self.suffix})
         return AddOnResult(modified_ctx=new_ctx)
 
@@ -73,7 +73,7 @@ class HaltingAddOn(AddOn):
     """Setzt halt=True."""
     name = "halting"
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         return AddOnResult(modified_ctx=ctx, halt=True)
 
 
@@ -81,7 +81,7 @@ class BrokenAddOn(AddOn):
     """Wirft immer eine Exception."""
     name = "broken"
 
-    async def on_input(self, ctx: PipelineContext) -> AddOnResult:
+    async def on_input(self, ctx: PipelineContext, history=None) -> AddOnResult:
         raise RuntimeError("Simulierter Fehler")
 
 
@@ -283,13 +283,13 @@ async def test_dispatch_priority_order():
 
     class First(AddOn):
         name = "first"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("first")
             return AddOnResult(modified_ctx=ctx)
 
     class Second(AddOn):
         name = "second"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("second")
             return AddOnResult(modified_ctx=ctx)
 
@@ -307,19 +307,19 @@ async def test_dispatch_same_priority_registration_order():
 
     class A(AddOn):
         name = "a_addon"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("a")
             return AddOnResult(modified_ctx=ctx)
 
     class B(AddOn):
         name = "b_addon"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("b")
             return AddOnResult(modified_ctx=ctx)
 
     class C(AddOn):
         name = "c_addon"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("c")
             return AddOnResult(modified_ctx=ctx)
 
@@ -343,13 +343,13 @@ async def test_dispatch_halt_stops_chain():
 
     class Halter(AddOn):
         name = "halter"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("halter")
             return AddOnResult(modified_ctx=ctx, halt=True)
 
     class AfterHalt(AddOn):
         name = "after_halt"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("after_halt")
             return AddOnResult(modified_ctx=ctx)
 
@@ -386,7 +386,7 @@ async def test_dispatch_exception_does_not_stop_chain():
 
     class After(AddOn):
         name = "after_broken"
-        async def on_input(self, ctx):
+        async def on_input(self, ctx: PipelineContext, history=None):
             call_order.append("after")
             return AddOnResult(modified_ctx=ctx)
 
@@ -414,7 +414,7 @@ async def test_dispatch_on_error_not_recursive():
     """Fehler in ON_ERROR-Handler löst kein weiteres ON_ERROR aus."""
     class BrokenErrorHandler(AddOn):
         name = "broken_error_handler"
-        async def on_error(self, ctx):
+        async def on_error(self, ctx: PipelineContext, history=None):
             raise RuntimeError("Auch kaputt")
 
     router = AddOnRouter()
@@ -464,7 +464,7 @@ async def test_dispatch_performance_10_addons():
     for i in range(10):
         class _A(AddOn):
             name = f"perf_{i}"
-            async def on_input(self, ctx):
+            async def on_input(self, ctx: PipelineContext, history=None):
                 return AddOnResult(modified_ctx=ctx)
         _A.name = f"perf_{i}"
         router.register(_A(), hooks=[HookPoint.ON_INPUT], priority=i)
