@@ -224,9 +224,14 @@ def load_config(config_path: str | None) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Heinzel CLI — Testheinzel")
     parser.add_argument("--config", "-c", help="Pfad zur YAML-Config", default=None)
+    parser.add_argument("--provider", "-p", help="Provider-URL (ueberschreibt Config)", default=None)
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+
+    # --provider ueberschreibt Config
+    if args.provider:
+        cfg["provider"]["url"] = args.provider
 
     provider_url: str = cfg["provider"]["url"]
     model: str = cfg["provider"].get("model", "")
