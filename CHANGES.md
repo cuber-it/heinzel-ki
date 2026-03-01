@@ -202,7 +202,10 @@ Commit: 5dc0aaa
 - Export unter addons.mcp_router statt heinzel_core.mcp (Core bleibt clean)
 - Approval-System über Story-Scope hinaus — kandidiert für eigenes Epic
 
-## HNZ-002-0006 — BaseHeinzel + Pipeline Engine
+## HNZ-002-0006 — BaseHeinzel (Commit: 5724301)
+
+### Original-Titel
+## HNZ-002-0006 — BaseHeinzel + Pipeline Engine (Commit: 5724301)
 
 ### Änderungen
 - `src/core/base.py`: BaseHeinzel + LLMProvider — Lifecycle, Pipeline-Loop, chat/chat_stream
