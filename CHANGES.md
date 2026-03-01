@@ -89,3 +89,26 @@ Alle Container nutzen native Binaries statt curl/wget:
 - Hostnamen und Benutzernamen aus kompletter Git-History entfernt (`git filter-repo`)
 - Force-push auf alle Branches (main, development, mvp-00)
 - Beide Maschinen neu geklont
+
+---
+
+## [MVP-02] — 2026-03-01 — HNZ-002-0001: Core Datenmodelle
+
+Branch: `mvp-002` | Tests: 30 passing
+
+### Hinzugefügt
+
+- `src/core/models/types.py` — HookPoint Enum (23 Pipeline-Phasen)
+- `src/core/models/base.py` — Basis-Models: Message, TokenUsage, ToolCall, ToolResult, MemoryResult, ThinkingStep, AddOnResult
+- `src/core/models/placeholders.py` — Platzhalter-Models: Fact, Skill, Goal, ResourceBudget, StepPlan, Reflection, EvaluationResult
+- `src/core/models/context.py` — PipelineContext (immutabel, frozen=True), evolve(), ContextDiff, ContextHistory
+- `src/core/models/__init__.py` — Re-Export aller Models
+- `src/core/exceptions.py` — Exception-Hierarchie: HeinzelError, ProviderError, DatabaseError, ConfigError, SessionError, StrategyError, AddOnError, AddOnDependencyError, AddOnLoadError, CircuitOpenError
+- `test/core/test_models.py` — 30 Unit-Tests (HookPoint, PipelineContext, ContextHistory, ContextDiff, Exceptions)
+- `docs/TODO-HNZ-002-0001.md` — Story-TODO-Liste
+
+### Designentscheidungen
+
+- PipelineContext frozen=True — Mutation über evolve() erzeugt neuen Snapshot
+- previous-Zeiger ermöglicht vollständige Denkgeschichte eines Turns
+- Facts/Rules/Prompt-Assembly bewusst ausgelassen — kommen als AddOns (HNZ-003+)
