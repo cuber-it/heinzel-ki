@@ -157,3 +157,47 @@ Branch: `mvp-002` | Tests: 30 passing
 - PipelineContext frozen=True — Mutation über evolve() erzeugt neuen Snapshot
 - previous-Zeiger ermöglicht vollständige Denkgeschichte eines Turns
 - Facts/Rules/Prompt-Assembly bewusst ausgelassen — kommen als AddOns (HNZ-003+)
+
+---
+
+## [MVP-002] — 2026-03-01 — HNZ-002-0004+0005: MCPToolsRouter AddOn
+
+Commit: TBD
+
+### Architektur-Entscheid
+- MCPToolsRouter ist ein AddOn (erbt von AddOn) — kein separates MCPAddOn nötig
+- 0004 und 0005 in einem gebaut: Router IS das AddOn
+- Neue Ordnerstruktur: src/addons/ als eigener Zweig neben src/core/
+- Core bleibt sauber: kein MCP-Wissen im Core
+
+### src/addons/mcp_router/ (neu)
+**models.py:**
+- ToolAddress: parsed 'target:server:tool', immutable, __str__ Roundtrip
+- KnownTool: Discovery-Eintrag (kenne ich dieses Tool?)
+- ToolCall: Aufruf mit address + args + context (Chaining)
+- ToolResult: Ergebnis mit unknown=True als Discovery-Signal
+- ApprovalPolicy: ALWAYS_ALLOW / ALWAYS_DENY / ASK_ONCE / ASK_ALWAYS
+- ServerEntry: Server-Eintrag mit approval-Dict (tool -> Policy, _default als Fallback)
+
+**router.py:**
+- MCPToolsRouter(AddOn): zwei Registries — _tools (Discovery) + _servers (Approval)
+- _tools: register/unregister/list_tools/find_tool
+- _servers: register_server/get_server_entry/list_servers/set_approval/get_approval
+- Approval-Flow: ALWAYS_ALLOW->run, ALWAYS_DENY->reject, ASK_ONCE->cache, ASK_ALWAYS->pending
+- ASK_ONCE Session-Cache: record_ask_once_answer(), clear_ask_once_cache()
+- call(): unknown->ToolResult(unknown=True), pending->metadata['approval_pending']
+- chain(): Output[n] als prev_result in Call[n+1]
+- on_tool_request(): unknown->metadata['unknown_tool_requests'], pending->metadata['approval_pending']
+- NoopMCPToolsRouter: _execute() nie erreicht (leere Registry), Austauschpunkt HNZ-004
+
+### test/addons/test_mcp_router.py (neu)
+- 62 Tests: ToolAddress, KnownTool, ToolCall, ToolResult, ApprovalPolicy, ServerEntry
+- Approval-Flow alle 4 Policies inkl. ASK_ONCE Cache-Lifecycle
+- on_tool_request Hook Integration
+- ABC-Verifizierung
+
+### Abweichungen von Story HNZ-002-0004
+- MCPServer/Tool aus Story entfallen — Architektur-Entscheid: kein Server-Bau
+- Adressierung via target:server:tool statt MCPServer-Objekt
+- Export unter addons.mcp_router statt heinzel_core.mcp (Core bleibt clean)
+- Approval-System über Story-Scope hinaus — kandidiert für eigenes Epic
