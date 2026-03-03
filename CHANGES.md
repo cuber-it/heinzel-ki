@@ -3,7 +3,7 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
-## [mvp-002] — 2026-03-03 — Code-Review: unnoetige Konstrukte entfernt (Commit PLACEHOLDER)
+## [mvp-002] — 2026-03-03 — Code-Review: unnoetige Konstrukte entfernt (Commit 4420b3b)
 
 **Cleanup nach Refactoring — kein Verhaltensaenderung**
 
