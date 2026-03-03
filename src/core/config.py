@@ -1,11 +1,12 @@
-"""heinzel_core.config — Konfigurationssystem: YAML, ENV-Override, Singleton."""
+"""heinzel_core.config.
+
+Konfigurationssystem: YAML, ENV-Override, Singleton.
+"""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
-
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, field_validator
@@ -43,7 +44,7 @@ class ProviderEntry(BaseModel):
 class DatabaseConfig(BaseModel):
     """Optionale Datenbank-Konfiguration."""
 
-    url: Optional[str] = None
+    url: str | None = None
     pool_min: int = 1
     pool_max: int = 10
 
@@ -82,7 +83,7 @@ class HeinzelConfig(BaseModel):
     heinzel: HeinzelIdentity = HeinzelIdentity()
     provider: ProviderDefaults = ProviderDefaults()
     providers: dict[str, ProviderEntry] = {}
-    database: Optional[DatabaseConfig] = None
+    database: DatabaseConfig | None = None
     session: SessionConfig = SessionConfig()
     logging: LoggingConfig = LoggingConfig()
     skills: SkillsConfig = SkillsConfig()
@@ -117,10 +118,8 @@ def _apply_env_overrides(data: dict) -> dict:
         section, field = parts
         if section in data and isinstance(data[section], dict):
             data[section][field] = value
-        elif section not in data:
-            data[section] = {field: value}
         else:
-            # Sektion existiert aber ist kein dict (Default-Objekt) — neu anlegen
+            # Sektion fehlt oder kein dict — neu anlegen
             data[section] = {field: value}
     return data
 
@@ -129,7 +128,8 @@ def _apply_env_overrides(data: dict) -> dict:
 # Standardpfade
 # ---------------------------------------------------------------------------
 
-def find_config_file() -> Optional[Path]:
+
+def find_config_file() -> Path | None:
     """Sucht heinzel.yaml in Standardpfaden. Gibt ersten Fund zurück."""
     search_paths = [
         Path.cwd() / "heinzel.yaml",
@@ -147,10 +147,10 @@ def find_config_file() -> Optional[Path]:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_config_cache: Optional[HeinzelConfig] = None
+_config_cache: HeinzelConfig | None = None
 
 
-def get_config(path: Optional[str | Path] = None) -> HeinzelConfig:
+def get_config(path: str | Path | None = None) -> HeinzelConfig:
     """Lädt und cached die Konfiguration.
 
     Args:
