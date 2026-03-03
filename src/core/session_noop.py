@@ -11,8 +11,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .compaction import CompactionRegistry, RollingSessionRegistry
 from .exceptions import SessionNotFoundError
 from .models.base import Message
+from .models.placeholders import HandoverContext, ResourceBudget
 from .session import (
     _uuid,
     MemoryGateInterface,
@@ -39,7 +41,7 @@ class NoopMemoryGate(MemoryGateInterface):
         return "noop"
 
     async def forget(self, turns: list[Turn], context: Any) -> list[Turn]:
-        """Forget Gate: nichts vergessen — alle Turns unveraendert zurueck."""
+        """Forget Gate: nichts vergessen — alle Turns unveraendert."""
         return turns
 
     async def store(self, turn: Turn, context: Any) -> bool:
@@ -47,7 +49,7 @@ class NoopMemoryGate(MemoryGateInterface):
         return True
 
     async def retrieve(self, context: Any, capacity: int) -> list[Turn]:
-        """Output Gate: nicht verwendet in NoopWorkingMemory (direkt auf _turns)."""
+        """Output Gate: nicht verwendet (NoopWorkingMemory greift direkt)."""
         return []
 
 
@@ -87,21 +89,29 @@ class NoopWorkingMemory(WorkingMemory):
     def max_turns(self) -> int:
         return self._max_turns
 
+    @property
+    def compaction_strategy(self):
+        """Aktive CompactionStrategy aus CompactionRegistry."""
+        return CompactionRegistry.get_default()
+
     async def add_turn(self, turn: Turn) -> None:
         """Turn aufnehmen wenn Gate es erlaubt, dann token-basiert trimmen."""
         if not await self._gate.store(turn, context=None):
             return
         self._turns.append(turn)
-        # Sicherheitsnetz: max_turns
         while len(self._turns) > self._max_turns:
             self._turns.pop(0)
-        # Hauptgrenze: token-Budget
-        while len(self._turns) > 1 and self.estimated_tokens() > self._max_tokens:
+        while (
+            len(self._turns) > 1
+            and self.estimated_tokens() > self._max_tokens
+        ):
             self._turns.pop(0)
 
     async def get_recent_turns(self, n: int) -> list[Turn]:
         """Letzte n Turns zurueckgeben."""
-        return self._turns[-n:] if n < len(self._turns) else list(self._turns)
+        return (
+            self._turns[-n:] if n < len(self._turns) else list(self._turns)
+        )
 
     async def get_context_messages(
         self, max_tokens: int | None = None
@@ -109,7 +119,7 @@ class NoopWorkingMemory(WorkingMemory):
         """Turns als user/assistant Message-Paare aufbereiten.
 
         Neueste zuerst einsammeln, aelteste fallen raus wenn Budget erschoepft.
-        Ergebnis wird chronologisch (aelteste zuerst) zurueckgegeben.
+        Ergebnis chronologisch (aelteste zuerst).
         Token-Schaetzung: 1 Zeichen ~ 0.25 Tokens (grob).
         """
         messages: list[Message] = []
@@ -117,10 +127,17 @@ class NoopWorkingMemory(WorkingMemory):
 
         for turn in reversed(self._turns):
             user_msg = Message(role="user", content=turn.raw_input)
-            assistant_msg = Message(role="assistant", content=turn.final_response)
-            turn_tokens = int((len(turn.raw_input) + len(turn.final_response)) / 4)
+            assistant_msg = Message(
+                role="assistant", content=turn.final_response
+            )
+            turn_tokens = (
+                len(turn.raw_input) + len(turn.final_response)
+            ) // 4
 
-            if max_tokens is not None and tokens_used + turn_tokens > max_tokens:
+            budget_hit = max_tokens is not None and (
+                tokens_used + turn_tokens > max_tokens
+            )
+            if budget_hit:
                 break
 
             messages.insert(0, assistant_msg)
@@ -135,22 +152,21 @@ class NoopWorkingMemory(WorkingMemory):
 
     def estimated_tokens(self) -> int:
         """Grobe Token-Schaetzung aller gespeicherten Turns (len/4)."""
-        total = sum(
+        return sum(
             len(t.raw_input) + len(t.final_response)
             for t in self._turns
-        )
-        return total // 4
+        ) // 4
 
     async def compact(self, keep_ratio: float = 0.5) -> None:
-        """Aelteste Turns entfernen — juengsten keep_ratio-Anteil behalten.
+        """Kompaktiert via CompactionStrategy (keep_ratio wird ignoriert).
 
-        Noop-Impl: kein Zusammenfassen, einfach kuerzen.
-        Beispiel: 10 Turns, keep_ratio=0.5 -> letzte 5 Turns behalten.
+        Nutzt die aktive Strategie aus CompactionRegistry.
         """
         if not self._turns:
             return
-        keep = max(1, int(len(self._turns) * keep_ratio))
-        self._turns = self._turns[-keep:]
+        budget = ResourceBudget(max_tokens=self._max_tokens)
+        result = await self.compaction_strategy.compact(self._turns, budget)
+        self._turns = list(result.kept_turns)
 
 
 # =============================================================================
@@ -165,7 +181,11 @@ class NoopSessionManager(SessionManager):
     Default in BaseHeinzel.
     """
 
-    def __init__(self, max_tokens: int = 128_000, max_turns: int = 10_000) -> None:
+    def __init__(
+        self,
+        max_tokens: int = 128_000,
+        max_turns: int = 10_000,
+    ) -> None:
         self._max_tokens = max_tokens
         self._max_turns = max_turns
         self._sessions: dict[str, Session] = {}
@@ -207,7 +227,7 @@ class NoopSessionManager(SessionManager):
         session = self._sessions.get(session_id)
         if session is None:
             raise SessionNotFoundError(
-                f"Session nicht gefunden", session_id=session_id
+                "Session nicht gefunden", session_id=session_id
             )
         self._active = session
         return session
@@ -224,7 +244,7 @@ class NoopSessionManager(SessionManager):
             self._active = None
 
     async def add_turn(self, session_id: str, turn: Turn) -> None:
-        """Turn zur Session hinzufuegen, turn_count und last_active_at aktualisieren."""
+        """Turn zur Session hinzufuegen, Metadaten aktualisieren."""
         if session_id not in self._sessions:
             return
         self._turns.setdefault(session_id, []).append(turn)
@@ -260,3 +280,46 @@ class NoopSessionManager(SessionManager):
                 max_turns=self._max_turns,
             )
         return self._working_memories[session_id]
+
+    async def maybe_roll(
+        self,
+        budget: ResourceBudget,
+    ) -> HandoverContext | None:
+        """Prueft ob die aktive Session gerollt werden soll.
+
+        Nutzt RollingSessionRegistry.get_default() als Policy.
+        Gibt HandoverContext zurueck wenn gerollt, sonst None.
+        Der Aufrufer ist verantwortlich fuer ON_SESSION_ROLL zu feuern.
+        """
+        session = self._active
+        if session is None:
+            return None
+
+        policy = RollingSessionRegistry.get_default()
+        if not policy.should_roll(session, budget):
+            return None
+
+        # Turns kompaktieren
+        wm = await self.get_working_memory(session.id)
+        n = len(self._turns.get(session.id, []))
+        turns = await wm.get_recent_turns(n)
+        compaction_result = await wm.compaction_strategy.compact(
+            turns, budget
+        )
+
+        # HandoverContext erstellen
+        handover = await policy.create_handover(session, compaction_result)
+
+        # Alte Session beenden
+        await self.end_session(session.id)
+
+        # Neue Session mit Handover in Metadata
+        new_session = await self.create_session(
+            heinzel_id=session.heinzel_id,
+            user_id=session.user_id,
+        )
+        self._sessions[new_session.id] = new_session.model_copy(
+            update={"metadata": {"handover": handover}}
+        )
+        self._active = self._sessions[new_session.id]
+        return handover

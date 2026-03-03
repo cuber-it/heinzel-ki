@@ -178,14 +178,34 @@ class TestNoopWorkingMemory:
         assert wm.estimated_tokens() == 20
 
     @pytest.mark.asyncio
-    async def test_compact_halbiert_turns(self):
-        wm = NoopWorkingMemory(max_turns=100)  # gross genug, kein token-trim
+    async def test_compact_nutzt_compaction_strategy(self):
+        # compact() nutzt SummarizingCompactionStrategy (recency_window=10)
+        # 6 Turns < recency_window => alle bleiben erhalten
+        wm = NoopWorkingMemory(max_turns=100)
         for i in range(6):
             await wm.add_turn(make_turn(raw_input=f"m{i}"))
-        await wm.compact(keep_ratio=0.5)
+        await wm.compact()
         turns = await wm.get_recent_turns(10)
-        assert len(turns) == 3
-        assert turns[0].raw_input == "m3"
+        # Alle 6 im recency_window -> alle behalten
+        assert len(turns) == 6
+
+    @pytest.mark.asyncio
+    async def test_compact_truncation_strategy(self):
+        # Mit TruncationStrategy (keep_last=2) bleiben nur die letzten 2
+        from core.compaction import CompactionRegistry, TruncationCompactionStrategy
+        CompactionRegistry.register(TruncationCompactionStrategy(keep_last=2))
+        CompactionRegistry.set_default("truncation")
+        try:
+            wm = NoopWorkingMemory(max_turns=100)
+            for i in range(6):
+                await wm.add_turn(make_turn(raw_input=f"m{i}"))
+            await wm.compact()
+            turns = await wm.get_recent_turns(10)
+            assert len(turns) == 2
+            assert turns[-1].raw_input == "m5"
+        finally:
+            CompactionRegistry.set_default("summarizing")
+
 
     @pytest.mark.asyncio
     async def test_compact_leer_kein_fehler(self):

@@ -141,8 +141,8 @@ class RollingSessionPolicy(ABC):
 def _is_critical(turn: Turn) -> bool:
     """True wenn der Turn kritische Keywords enthaelt."""
     text = " ".join([
-        turn.user_message or "",
-        turn.assistant_message or "",
+        turn.raw_input,
+        turn.final_response,
     ]).lower()
     return any(kw in text for kw in _CRITICAL_KEYWORDS)
 
@@ -186,7 +186,7 @@ class SummarizingCompactionStrategy(CompactionStrategy):
         n = len(turns)
         topics = []
         for t in turns:
-            msg = t.user_message or ""
+            msg = t.raw_input or ""
             if msg:
                 topics.append(msg[:60].strip())
         topic_str = "; ".join(topics[:5])
@@ -218,7 +218,7 @@ class SummarizingCompactionStrategy(CompactionStrategy):
         # Naive Token-Schaetzung: 4 Zeichen ~ 1 Token
         def _est_tokens(ts: list[Turn]) -> int:
             return sum(
-                len(t.user_message or "") + len(t.assistant_message or "")
+                len(t.raw_input) + len(t.final_response)
                 for t in ts
             ) // 4
 
@@ -297,7 +297,7 @@ class TruncationCompactionStrategy(CompactionStrategy):
 
         def _est_tokens(ts: list[Turn]) -> int:
             return sum(
-                len(t.user_message or "") + len(t.assistant_message or "")
+                len(t.raw_input) + len(t.final_response)
                 for t in ts
             ) // 4
 

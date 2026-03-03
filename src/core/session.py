@@ -25,6 +25,12 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from .models.base import Message
+from .models.placeholders import HandoverContext, ResourceBudget
+
+# Compaction-Imports nur fuer Type-Checking (verhindert zirkulaere Imports)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .compaction import CompactionStrategy
 
 
 # =============================================================================
@@ -169,6 +175,15 @@ class WorkingMemory(ABC):
         einen ContextLengthExceededError wirft.
         """
 
+    @property
+    @abstractmethod
+    def compaction_strategy(self) -> CompactionStrategy:
+        """Aktive CompactionStrategy fuer dieses WorkingMemory.
+
+        Default-Implementierungen holen die Strategie aus CompactionRegistry.
+        Kann ueberschrieben werden um eine feste Strategie zu erzwingen.
+        """
+
 
 class SessionManager(ABC):
     """Verwaltung von Sessions und Turns."""
@@ -224,6 +239,24 @@ class SessionManager(ABC):
     @abstractmethod
     async def get_working_memory(self, session_id: str) -> WorkingMemory:
         """WorkingMemory fuer eine Session zurueckgeben."""
+
+    @abstractmethod
+    async def maybe_roll(
+        self,
+        budget: ResourceBudget,
+    ) -> HandoverContext | None:
+        """Prueft ob die aktive Session gerollt werden soll.
+
+        Wenn die aktive RollingSessionPolicy should_roll() -> True liefert:
+          1. Aktuelle Turns kompaktieren (CompactionStrategy)
+          2. HandoverContext erstellen
+          3. Aktuelle Session beenden
+          4. Neue Session anlegen mit HandoverContext in metadata['handover']
+          5. HandoverContext zurueckgeben
+
+        Gibt None zurueck wenn kein Roll noetig.
+        Der Aufrufer ist verantwortlich fuer ON_SESSION_ROLL zu feuern.
+        """
 
 
 class MemoryGateInterface(ABC):
