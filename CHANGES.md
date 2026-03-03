@@ -3,6 +3,18 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-03 — Tech-Debt: base.py aufgeteilt (Commit PLACEHOLDER)
+
+**Refactoring: base.py in saubere Module aufgeteilt — keine Verhaltensaenderung**
+
+- `provider.py`: LLMProvider ABC hierher verschoben (war Duplikat in base.py)
+- `_dialog_logger.py` (neu): _DialogLogger Klasse ausgelagert, package-intern
+- `_provider_bridge.py` (neu): build_messages(), build_messages_from_ctx(), call_provider() — reine Funktionen mit heinzel-Parameter (Option C, TYPE_CHECKING-Guard)
+- `_pipeline.py` (neu): run_pre_phases(), run_post_phases(), run_pipeline(), phase(), dispatch_and_apply() — kein Code-Duplikat mehr zwischen chat() und chat_stream()
+- `base.py`: 787 → 382 Zeilen (-51%); Methoden sind Delegate-One-Liner; chat_stream() nutzt run_pre_phases/run_post_phases
+- PEP8: alle angefassten Dateien flake8-sauber (max 100 Zeichen)
+- 399 Tests gruen
+
 ## [mvp-002] — 2026-03-03 — HNZ-002-0017 Abschluss (Commit 7684f9c)
 
 **BaseHeinzel Session-Integration + token-basiertes Working Memory**

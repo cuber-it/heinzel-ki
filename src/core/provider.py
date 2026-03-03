@@ -11,14 +11,45 @@ from __future__ import annotations
 
 import json
 import logging
+from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator
 
 import httpx
 
-from .base import LLMProvider
 from .exceptions import ProviderError
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# LLMProvider ABC — minimales Interface fuer alle LLM-Provider
+# =============================================================================
+
+
+class LLMProvider(ABC):
+    """Minimales Interface fuer LLM-Provider.
+
+    Konkrete Implementierungen: HttpLLMProvider (HTTP gegen Provider-Service).
+    Fuer Tests genuegt ein Mock der dieses Interface implementiert.
+    """
+
+    @abstractmethod
+    async def chat(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str = "",
+        model: str = "",
+    ) -> str:
+        """Einfacher Chat-Call. Gibt den Response-Text zurueck."""
+
+    @abstractmethod
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str = "",
+        model: str = "",
+    ) -> AsyncGenerator[str, None]:
+        """Streaming-Call. Liefert Text-Chunks."""
 
 
 class HttpLLMProvider(LLMProvider):
