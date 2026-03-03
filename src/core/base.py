@@ -28,14 +28,17 @@ from typing import Any, AsyncGenerator
 from uuid import uuid4
 
 from .addon import AddOn
-from .exceptions import AddOnError
+from .exceptions import AddOnError, ContextLengthExceededError
 from .models import (
     AddOnResult,
     ContextHistory,
     HookPoint,
     PipelineContext,
 )
+from .models.base import Message
 from .router import AddOnRouter
+from .session import SessionManager, Turn, WorkingMemory
+from .session_noop import NoopSessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +194,14 @@ class BaseHeinzel:
         self._dialog_log = _DialogLogger(self._heinzel_id, self._config)
         self._pending_provider: LLMProvider | None = None   # turn-safe swap
         self._in_turn: bool = False                         # laufender LLM-Call
+        _mem_cfg = self._config.get("memory", {})
+        _max_tokens: int = int(_mem_cfg.get("max_tokens", 128_000))
+        _max_turns: int = int(_mem_cfg.get("max_turns", 10_000))
+        self._session_manager: SessionManager = NoopSessionManager(
+            max_tokens=_max_tokens,
+            max_turns=_max_turns,
+        )
+        self._working_memory: WorkingMemory | None = None   # lazy via _ensure_session()
 
     # -------------------------------------------------------------------------
     # Properties
@@ -215,6 +226,51 @@ class BaseHeinzel:
     @property
     def addon_router(self) -> AddOnRouter:
         return self._router
+
+    @property
+    def session_manager(self) -> SessionManager:
+        return self._session_manager
+
+    def set_session_manager(self, manager: SessionManager) -> None:
+        """SessionManager austauschen — muss vor dem ersten chat()-Call passieren.
+
+        Der Manager verwaltet Sessions, Turns und Working Memory.
+        Default ist NoopSessionManager (in-memory, kein Persist).
+        """
+        self._session_manager = manager
+        self._working_memory = None   # Working Memory zuruecksetzen — lazy neu holen
+
+    async def _ensure_session(self, session_id: str | None) -> tuple[str, WorkingMemory]:
+        """Lazy Session-Init: Session anlegen oder fortsetzen, Working Memory holen.
+
+        Gibt (session_id, working_memory) zurueck.
+        Wird beim ersten Turn in _run_pipeline() aufgerufen.
+        """
+        from .exceptions import SessionNotFoundError
+
+        if session_id is not None:
+            # Explizite session_id: vorhandene Session fortsetzen
+            try:
+                session = await self._session_manager.resume_session(session_id)
+            except SessionNotFoundError:
+                # Unbekannte ID: neue Session mit dieser ID ist nicht moeglich
+                # -> neue Session anlegen, session_id ignorieren
+                logger.warning(
+                    "_ensure_session: session_id %s unbekannt, neue Session gestartet",
+                    session_id,
+                )
+                session = await self._session_manager.create_session(
+                    self._heinzel_id, session_id=session_id
+                )
+        else:
+            active = self._session_manager.active_session
+            if active is not None:
+                session = active
+            else:
+                session = await self._session_manager.create_session(self._heinzel_id)
+
+        working_memory = await self._session_manager.get_working_memory(session.id)
+        return session.id, working_memory
 
     async def set_provider(self, provider: LLMProvider) -> bool:
         """Provider wechseln — mit health-Check und turn-safem Swap.
@@ -313,7 +369,7 @@ class BaseHeinzel:
         """
         try:
             message = await self.on_before_chat(message)
-            sid = session_id or str(uuid4())
+            sid, working_memory = await self._ensure_session(session_id)
             ctx_history = ContextHistory()
 
             # Initialer Snapshot
@@ -340,6 +396,20 @@ class BaseHeinzel:
                 if halted:
                     break
                 if phase == HookPoint.ON_MEMORY_QUERY:
+                    wm_messages = await working_memory.get_context_messages()
+                    wm_tokens = working_memory.estimated_tokens()
+                    wm_turns = len(await working_memory.get_recent_turns(999))
+                    if wm_messages:
+                        ctx = ctx.evolve(
+                            messages=wm_messages + ctx.messages,
+                            working_memory_turns=wm_turns,
+                            memory_tokens_used=wm_tokens,
+                        )
+                    else:
+                        ctx = ctx.evolve(
+                            working_memory_turns=0,
+                            memory_tokens_used=0,
+                        )
                     memory_phase = (
                         HookPoint.ON_MEMORY_HIT
                         if ctx.memory_results
@@ -398,6 +468,16 @@ class BaseHeinzel:
                 ctx, _ = await self._phase(phase, ctx, ctx_history)
                 if phase == HookPoint.ON_OUTPUT_SENT:
                     self._dialog_log.log_heinzel(stream_buffer)
+                elif phase == HookPoint.ON_STORED:
+                    turn = Turn(
+                        session_id=sid,
+                        raw_input=message,
+                        final_response=stream_buffer,
+                        tokens_used=ctx.memory_tokens_used,
+                        history_depth=ctx.working_memory_turns,
+                    )
+                    await working_memory.add_turn(turn)
+                    await self._session_manager.add_turn(sid, turn)
 
         except Exception as exc:
             logger.error("chat_stream() Fehler: %s", exc, exc_info=True)
@@ -424,7 +504,7 @@ class BaseHeinzel:
     ) -> tuple[ContextHistory, PipelineContext]:
         """Vollstaendiger Pipeline-Durchlauf. Gibt (history, final_ctx) zurueck."""
 
-        sid = session_id or str(uuid4())
+        sid, working_memory = await self._ensure_session(session_id)
         ctx_history = ContextHistory()
 
         # Initialer Snapshot
@@ -451,8 +531,24 @@ class BaseHeinzel:
             if halted:
                 break
 
-            # Nach MEMORY_QUERY: HIT oder MISS
+            # Nach MEMORY_QUERY: Working Memory in ctx einspeisen + HIT/MISS
             if phase == HookPoint.ON_MEMORY_QUERY:
+                wm_messages = await working_memory.get_context_messages()
+                wm_tokens = working_memory.estimated_tokens()
+                wm_turns = len(await working_memory.get_recent_turns(999))
+                if wm_messages:
+                    # Working Memory PREPEND: History vor aktuellem Input
+                    ctx = ctx.evolve(
+                        messages=wm_messages + ctx.messages,
+                        working_memory_turns=wm_turns,
+                        memory_tokens_used=wm_tokens,
+                    )
+                else:
+                    ctx = ctx.evolve(
+                        working_memory_turns=0,
+                        memory_tokens_used=0,
+                    )
+
                 memory_phase = (
                     HookPoint.ON_MEMORY_HIT
                     if ctx.memory_results
@@ -512,6 +608,17 @@ class BaseHeinzel:
             ctx, _ = await self._phase(phase, ctx, ctx_history)
             if phase == HookPoint.ON_OUTPUT_SENT:
                 self._dialog_log.log_heinzel(ctx.response or ctx.stream_buffer or "")
+            elif phase == HookPoint.ON_STORED:
+                # Turn ins Working Memory aufnehmen
+                turn = Turn(
+                    session_id=sid,
+                    raw_input=message,
+                    final_response=ctx.response or ctx.stream_buffer or "",
+                    tokens_used=ctx.memory_tokens_used,
+                    history_depth=ctx.working_memory_turns,
+                )
+                await working_memory.add_turn(turn)
+                await self._session_manager.add_turn(sid, turn)
 
         return ctx_history, ctx
 
@@ -585,6 +692,7 @@ class BaseHeinzel:
         Ein pending Provider wird nach dem Call aktiviert.
         """
         messages = self._build_messages_from_ctx(ctx)
+        working_memory = await self._session_manager.get_working_memory(ctx.session_id)
         self._in_turn = True
         try:
             response = await self._provider.chat(
@@ -592,6 +700,26 @@ class BaseHeinzel:
                 system_prompt=ctx.system_prompt,
                 model=ctx.model,
             )
+        except ContextLengthExceededError as exc:
+            # Lazy-Discovery: Limit merken, compact, einmal Retry
+            logger.warning(
+                "_call_provider: Kontextfenster erschoepft (tokens_sent=%d, limit=%s) — compact + retry",
+                exc.tokens_sent,
+                exc.limit_discovered,
+            )
+            if exc.limit_discovered and hasattr(self._provider, "context_window"):
+                self._provider.context_window = exc.limit_discovered
+            await working_memory.compact(keep_ratio=0.5)
+            messages = self._build_messages_from_ctx(ctx)
+            try:
+                response = await self._provider.chat(
+                    messages=messages,
+                    system_prompt=ctx.system_prompt,
+                    model=ctx.model,
+                )
+            except Exception as retry_exc:
+                logger.error("_call_provider: Retry nach compact fehlgeschlagen: %s", retry_exc)
+                response = f"[Provider-Fehler nach compact: {retry_exc}]"
         except Exception as exc:
             logger.error("Provider-Fehler: %s", exc, exc_info=True)
             response = f"[Provider-Fehler: {exc}]"
@@ -621,12 +749,17 @@ class BaseHeinzel:
     def _build_messages_from_ctx(self, ctx: PipelineContext) -> list[dict[str, Any]]:
         """Messages aus Context bauen.
 
-        Fallback wenn kein ContextBuilder-AddOn registriert:
-        nur die aktuelle User-Message.
+        Aufbau: [Working Memory History...] + [aktuelle User-Message]
+
+        ctx.messages enthaelt Working Memory (prepended in ON_MEMORY_QUERY).
+        Der aktuelle User-Input kommt immer als letzte Message dazu,
+        damit das Modell weiss worauf es antworten soll.
         """
+        current = {"role": "user", "content": ctx.parsed_input or ctx.raw_input}
         if ctx.messages:
-            return [{"role": m.role, "content": m.content} for m in ctx.messages]
-        return [{"role": "user", "content": ctx.parsed_input or ctx.raw_input}]
+            history = [{"role": m.role, "content": m.content} for m in ctx.messages]
+            return history + [current]
+        return [current]
 
     @staticmethod
     def _load_config(

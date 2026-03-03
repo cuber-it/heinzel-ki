@@ -61,6 +61,62 @@ def handle_history(heinzel: BaseHeinzel) -> None:
     print("--- Ende ---\n")
 
 
+async def handle_memory(heinzel: BaseHeinzel) -> None:
+    """!memory — Working Memory Status anzeigen."""
+    session = heinzel.session_manager.active_session
+    if session is None:
+        print("[kein aktive Session]")
+        return
+    wm = await heinzel.session_manager.get_working_memory(session.id)
+    turns = await wm.get_recent_turns(999)
+    tokens = wm.estimated_tokens()
+    pct = int(tokens / wm.max_tokens * 100) if wm.max_tokens else 0
+    print(f"\n--- Working Memory ---")
+    print(f"  Session:    {session.id[:8]}...")
+    print(f"  Turns:      {len(turns)} (max {wm.max_turns})")
+    print(f"  ~Token:     {tokens} / {wm.max_tokens} ({pct}%)")
+    if turns:
+        if len(turns[0].raw_input) > 50:
+            print(f"  Aeltester: '{turns[0].raw_input[:50]}...'")
+        else:
+            print(f"  Aeltester: '{turns[0].raw_input}'")
+        if len(turns[-1].raw_input) > 50:
+            print(f"  Juengster: '{turns[-1].raw_input[:50]}...'")
+        else:
+            print(f"  Juengster: '{turns[-1].raw_input}'")
+    print("--- Ende ---\n")
+
+
+async def handle_session(heinzel: BaseHeinzel) -> None:
+    """!session — aktive Session anzeigen."""
+    session = heinzel.session_manager.active_session
+    if session is None:
+        print("[keine aktive Session]")
+        return
+    print(f"\n--- Session ---")
+    print(f"  ID:       {session.id}")
+    print(f"  Status:   {session.status}")
+    print(f"  Turns:    {session.turn_count}")
+    print(f"  Start:    {session.started_at.strftime('%H:%M:%S')}")
+    print(f"  Zuletzt:  {session.last_active_at.strftime('%H:%M:%S')}")
+    print("--- Ende ---\n")
+
+
+async def memory_status(heinzel: BaseHeinzel) -> str:
+    """Einzeilige Kontext-Anzeige fuer nach jeder Antwort."""
+    session = heinzel.session_manager.active_session
+    if session is None:
+        return ""
+    wm = await heinzel.session_manager.get_working_memory(session.id)
+    turns = await wm.get_recent_turns(999)
+    tokens = wm.estimated_tokens()
+    cw = heinzel.provider.context_window
+    if cw:
+        pct = int(tokens / cw * 100)
+        return f"[Kontext: {len(turns)} Turns | ~{tokens} Token | {pct}% von {cw}]"
+    return f"[Kontext: {len(turns)} Turns | ~{tokens} Token]"
+
+
 # =============================================================================
 # REPL
 # =============================================================================
@@ -72,7 +128,7 @@ async def run_repl(heinzel: BaseHeinzel, provider_url: str) -> None:
     print(f"  Heinzel: {heinzel.name}  ({heinzel.heinzel_id[:8]}...)")
     print(f"  Provider: {provider_url}")
     print(f"  Log: {log_path or '(kein Log)'}")
-    print(f"  Kommandos: !quit  !history")
+    print(f"  Kommandos: !quit  !history  !memory  !session")
     print(f"{'='*60}\n")
 
     await heinzel.connect()
@@ -97,8 +153,16 @@ async def run_repl(heinzel: BaseHeinzel, provider_url: str) -> None:
                 handle_history(heinzel)
                 continue
 
+            if user_input.lower() == "!memory":
+                await handle_memory(heinzel)
+                continue
+
+            if user_input.lower() == "!session":
+                await handle_session(heinzel)
+                continue
+
             if user_input.startswith("!"):
-                print(f"[Unbekanntes Kommando: {user_input}  —  verfuegbar: !quit !history]")
+                print(f"[Unbekanntes Kommando: {user_input}  —  verfuegbar: !quit !history !memory !session]")
                 continue
 
             # Chat via Streaming
@@ -107,6 +171,9 @@ async def run_repl(heinzel: BaseHeinzel, provider_url: str) -> None:
                 async for chunk in heinzel.chat_stream(user_input):
                     print(chunk, end="", flush=True)
                 print()  # Zeilenumbruch nach Antwort
+                status = await memory_status(heinzel)
+                if status:
+                    print(f"\033[2m{status}\033[0m")  # gedimmt anzeigen
             except Exception as exc:
                 print(f"\n[Fehler: {exc}]")
 

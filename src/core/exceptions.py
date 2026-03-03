@@ -38,6 +38,36 @@ class ProviderError(HeinzelError):
         return " | ".join(parts)
 
 
+class ContextLengthExceededError(ProviderError):
+    """Kontextfenster des Modells erschoepft (HTTP 400 vom Provider).
+
+    Wird in _call_provider() gefangen um:
+    1. Das Limit zu merken (limit_discovered)
+    2. compact() auszuloesen
+    3. Den Request zu wiederholen
+
+    tokens_sent      -- geschaetzte Token die wir gesendet haben
+    limit_discovered -- vom Provider gemeldetes Limit (falls vorhanden)
+    """
+
+    def __init__(
+        self,
+        message: str,
+        tokens_sent: int = 0,
+        limit_discovered: int | None = None,
+        detail: str | None = None,
+    ) -> None:
+        self.tokens_sent = tokens_sent
+        self.limit_discovered = limit_discovered
+        super().__init__(message, status_code=400, detail=detail)
+
+    def __str__(self) -> str:
+        parts = [self.message, f"tokens_sent={self.tokens_sent}"]
+        if self.limit_discovered:
+            parts.append(f"limit={self.limit_discovered}")
+        return " | ".join(parts)
+
+
 # --- Datenbank ---
 
 class DatabaseError(HeinzelError):
@@ -155,4 +185,5 @@ __all__ = [
     "AddOnDependencyError",
     "AddOnLoadError",
     "CircuitOpenError",
+    "ContextLengthExceededError",
 ]

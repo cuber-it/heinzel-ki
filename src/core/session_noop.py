@@ -14,6 +14,7 @@ from typing import Any
 from .exceptions import SessionNotFoundError
 from .models.base import Message
 from .session import (
+    _uuid,
     MemoryGateInterface,
     Session,
     SessionManager,
@@ -58,29 +59,45 @@ class NoopMemoryGate(MemoryGateInterface):
 class NoopWorkingMemory(WorkingMemory):
     """In-memory Working Memory ohne Persist.
 
-    Haelt die letzten `capacity` Turns im RAM.
-    Konvertiert Turns in user/assistant Message-Paare fuer den LLM.
+    Token-basiertes Budget: nach jedem add_turn() werden die aeltesten
+    Turns entfernt bis estimated_tokens() < max_tokens.
+    max_turns ist ein Sicherheitsnetz fuer sehr kurze Turns.
+
+    Defaults:
+        max_tokens = 128_000  (passt zu den meisten modernen Modellen)
+        max_turns  = 10_000   (praktisch unbegrenzt)
     """
 
     def __init__(
         self,
-        capacity: int = 10,
+        max_tokens: int = 128_000,
+        max_turns: int = 10_000,
         gate: MemoryGateInterface | None = None,
     ) -> None:
-        self._capacity = capacity
+        self._max_tokens = max_tokens
+        self._max_turns = max_turns
         self._gate = gate or NoopMemoryGate()
         self._turns: list[Turn] = []
 
     @property
-    def capacity(self) -> int:
-        return self._capacity
+    def max_tokens(self) -> int:
+        return self._max_tokens
+
+    @property
+    def max_turns(self) -> int:
+        return self._max_turns
 
     async def add_turn(self, turn: Turn) -> None:
-        """Turn aufnehmen wenn Gate es erlaubt, dann auf capacity trimmen."""
-        if await self._gate.store(turn, context=None):
-            self._turns.append(turn)
-            if len(self._turns) > self._capacity:
-                self._turns = self._turns[-self._capacity:]
+        """Turn aufnehmen wenn Gate es erlaubt, dann token-basiert trimmen."""
+        if not await self._gate.store(turn, context=None):
+            return
+        self._turns.append(turn)
+        # Sicherheitsnetz: max_turns
+        while len(self._turns) > self._max_turns:
+            self._turns.pop(0)
+        # Hauptgrenze: token-Budget
+        while len(self._turns) > 1 and self.estimated_tokens() > self._max_tokens:
+            self._turns.pop(0)
 
     async def get_recent_turns(self, n: int) -> list[Turn]:
         """Letzte n Turns zurueckgeben."""
@@ -116,6 +133,25 @@ class NoopWorkingMemory(WorkingMemory):
         """Working Memory leeren."""
         self._turns = []
 
+    def estimated_tokens(self) -> int:
+        """Grobe Token-Schaetzung aller gespeicherten Turns (len/4)."""
+        total = sum(
+            len(t.raw_input) + len(t.final_response)
+            for t in self._turns
+        )
+        return total // 4
+
+    async def compact(self, keep_ratio: float = 0.5) -> None:
+        """Aelteste Turns entfernen — juengsten keep_ratio-Anteil behalten.
+
+        Noop-Impl: kein Zusammenfassen, einfach kuerzen.
+        Beispiel: 10 Turns, keep_ratio=0.5 -> letzte 5 Turns behalten.
+        """
+        if not self._turns:
+            return
+        keep = max(1, int(len(self._turns) * keep_ratio))
+        self._turns = self._turns[-keep:]
+
 
 # =============================================================================
 # NoopSessionManager
@@ -129,9 +165,12 @@ class NoopSessionManager(SessionManager):
     Default in BaseHeinzel.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_tokens: int = 128_000, max_turns: int = 10_000) -> None:
+        self._max_tokens = max_tokens
+        self._max_turns = max_turns
         self._sessions: dict[str, Session] = {}
         self._turns: dict[str, list[Turn]] = {}
+        self._working_memories: dict[str, NoopWorkingMemory] = {}
         self._active: Session | None = None
 
     @property
@@ -139,10 +178,17 @@ class NoopSessionManager(SessionManager):
         return self._active
 
     async def create_session(
-        self, heinzel_id: str, user_id: str | None = None
+        self,
+        heinzel_id: str,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ) -> Session:
         """Neue Session anlegen und als aktiv setzen."""
-        session = Session(heinzel_id=heinzel_id, user_id=user_id)
+        session = Session(
+            id=session_id or _uuid(),
+            heinzel_id=heinzel_id,
+            user_id=user_id,
+        )
         self._sessions[session.id] = session
         self._turns[session.id] = []
         self._active = session
@@ -207,5 +253,10 @@ class NoopSessionManager(SessionManager):
         return sessions[:limit]
 
     async def get_working_memory(self, session_id: str) -> WorkingMemory:
-        """Immer neue NoopWorkingMemory — kein Persist."""
-        return NoopWorkingMemory()
+        """Working Memory pro Session — gleiche Instanz bei jedem Aufruf."""
+        if session_id not in self._working_memories:
+            self._working_memories[session_id] = NoopWorkingMemory(
+                max_tokens=self._max_tokens,
+                max_turns=self._max_turns,
+            )
+        return self._working_memories[session_id]

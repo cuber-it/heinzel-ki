@@ -103,12 +103,29 @@ class WorkingMemory(ABC):
     """Kurzfristiges Gedaechtnis: letzte N Turns -> PipelineContext.messages.
 
     Wird bei ON_MEMORY_QUERY in den PipelineContext eingespeist.
+
+    Grenzen (beide aktiv):
+        max_tokens — Token-Budget (Hauptgrenze, token-basiert)
+        max_turns  — Sicherheitsnetz (verhindert endlose Akkumulation)
     """
 
     @property
     @abstractmethod
-    def capacity(self) -> int:
-        """Maximale Anzahl Turns im Working Memory."""
+    def max_tokens(self) -> int:
+        """Token-Budget fuer das Working Memory.
+
+        Hauptgrenze: add_turn() trimmt die aeltesten Turns bis
+        estimated_tokens() wieder unter diesem Wert liegt.
+        """
+
+    @property
+    @abstractmethod
+    def max_turns(self) -> int:
+        """Maximale Turns als Sicherheitsnetz (unabhaengig von Tokens).
+
+        Verhindert endlose Akkumulation bei sehr kurzen Turns.
+        Typischerweise gross gewaehlt (z.B. 10_000).
+        """
 
     @abstractmethod
     async def get_recent_turns(self, n: int) -> list[Turn]:
@@ -132,6 +149,26 @@ class WorkingMemory(ABC):
     async def clear(self) -> None:
         """Working Memory leeren."""
 
+    @abstractmethod
+    def estimated_tokens(self) -> int:
+        """Schaetzt den Token-Verbrauch aller gespeicherten Turns.
+
+        Grobe Schaetzung (len(text) / 4) — reicht fuer Budgetentscheidungen.
+        Kein API-Call, muss synchron und schnell sein.
+        """
+
+    @abstractmethod
+    async def compact(self, keep_ratio: float = 0.5) -> None:
+        """Aelteste Turns entfernen um Kontextfenster zu entlasten.
+
+        keep_ratio=0.5 bedeutet: die juengsten 50% der Turns behalten,
+        den Rest verwerfen. Eine echte Impl koennte die verworfenen Turns
+        vorher via LLM zusammenfassen (Kompaktifizierung).
+
+        Wird automatisch von _call_provider() ausgeloest wenn der Provider
+        einen ContextLengthExceededError wirft.
+        """
+
 
 class SessionManager(ABC):
     """Verwaltung von Sessions und Turns."""
@@ -143,9 +180,16 @@ class SessionManager(ABC):
 
     @abstractmethod
     async def create_session(
-        self, heinzel_id: str, user_id: str | None = None
+        self,
+        heinzel_id: str,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ) -> Session:
-        """Neue Session anlegen und als aktiv setzen."""
+        """Neue Session anlegen und als aktiv setzen.
+
+        session_id: optionale ID — wenn None wird eine UUID generiert.
+        Wird benutzt um eine explizit uebergebene session_id zu erhalten.
+        """
 
     @abstractmethod
     async def get_session(self, session_id: str) -> Session | None:

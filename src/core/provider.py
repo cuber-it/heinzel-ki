@@ -44,6 +44,7 @@ class HttpLLMProvider(LLMProvider):
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout
+        self._context_window: int | None = None  # lazy-discovery via ContextLengthExceededError
 
     # -------------------------------------------------------------------------
     # Properties
@@ -60,6 +61,21 @@ class HttpLLMProvider(LLMProvider):
     @property
     def current_model(self) -> str:
         return self._model
+
+    @property
+    def context_window(self) -> int | None:
+        """Bekannte Kontextfenster-Groesse in Token.
+
+        None = noch unbekannt (kein Request bisher oder nie ein 400 erhalten).
+        Wird automatisch gesetzt wenn _call_provider() einen
+        ContextLengthExceededError faengt.
+        """
+        return self._context_window
+
+    @context_window.setter
+    def context_window(self, value: int) -> None:
+        """Setzt das Limit nach Lazy-Discovery durch einen 400-Fehler."""
+        self._context_window = value
 
     # -------------------------------------------------------------------------
     # Management
