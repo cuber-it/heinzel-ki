@@ -3,6 +3,32 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-03 — HNZ-002-0018 Compaction Interfaces (Commit f5fcafc)
+
+**CompactionStrategy + Registry + SummarizingCompactionStrategy (Claude-Default)**
+
+- `src/core/compaction.py` (neu, 425 Zeilen):
+  - CompactionStrategy ABC: should_compact / compact / extract_critical / summarize / name
+  - RollingSessionPolicy ABC: should_roll / create_handover / name
+  - CompactionRegistry (Singleton): register/get/list_available/set_default/get_default
+  - RollingSessionRegistry (Singleton): analog
+  - SummarizingCompactionStrategy (DEFAULT, Claude-Stil): recency_window + kritische Turns, Rest -> Summary
+  - TruncationCompactionStrategy (lossy, explizit dokumentiert): FIFO
+  - NoopRollingSessionPolicy (DEFAULT): should_roll=False
+  - Defaults beim Import registriert
+- `src/core/models/types.py`: ON_SESSION_ROLL ergaenzt (24 HookPoints)
+- `src/core/models/placeholders.py`: CompactionResult + HandoverContext (frozen Pydantic)
+- `src/core/models/__init__.py`: neue Models exportiert
+- `src/core/addon.py`: on_session_roll Hook ergaenzt
+- Tests angepasst (24 HookPoints)
+- 411 Tests gruen
+
+**Noch offen (naechste Session):**
+- session.py: WorkingMemory + SessionManager Integration
+- test/test_compaction.py: volle Test-Suite
+- __init__.py: Compaction-Exporte
+- MEMORY_GUIDE.md
+
 ## [mvp-002] — 2026-03-03 — HNZ-002-0007: Config-System (Commit 2d2cb84)
 
 **Config-System: YAML, ENV-Override, Singleton**
