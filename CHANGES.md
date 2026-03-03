@@ -3,6 +3,55 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-03 — HNZ-002-0017 Teilimplementierung (Commit 31c0ca0)
+
+### Was gemacht wurde
+
+**src/core/session.py** (neu)
+- `SessionStatus` Enum: active / paused / ended
+- `Session` Model (frozen Pydantic): id, heinzel_id, user_id, status, started_at, last_active_at, turn_count, metadata
+- `Turn` Model (frozen Pydantic): id, session_id, timestamp, raw_input, final_response, strategy_used, complexity_level, history_depth, snapshot_ids, duration_ms, tokens_used
+- `WorkingMemory` ABC: capacity, get_recent_turns, add_turn, get_context_messages, clear
+- `SessionManager` ABC: active_session, create/get/resume/end_session, add_turn, get_turns, list_sessions, get_working_memory
+- `MemoryGateInterface` ABC (Platzhalter HNZ-00x): forget, store, retrieve (LSTM-Gate-Konzept)
+
+**src/core/session_noop.py** (neu)
+- `NoopMemoryGate`: forget=passthrough, store=True, retrieve=leer
+- `NoopWorkingMemory`: capacity=10, in-memory list[Turn], get_context_messages mit Token-Budget
+- `NoopSessionManager`: dict-basiert, kein Persist, active_session-Tracking, turn_count + last_active_at Update
+
+**src/core/exceptions.py**
+- `SessionNotFoundError(SessionError)` ergaenzt, in __all__ eingetragen
+
+**src/core/models/context.py**
+- `working_memory_turns: int = 0` in PipelineContext (Meta-Sektion)
+- `memory_tokens_used: int = 0` in PipelineContext (Meta-Sektion)
+
+**docs/MEMORY_GUIDE.md** (neu, Platzhalter — wird in dieser Story befuellt)
+
+**test/core/test_session.py** (neu, Skelett — Tests folgen in naechster Session)
+
+### Noch offen (naechste Session)
+
+- Block 5: BaseHeinzel Integration (base.py, 654 Zeilen!)
+  - Session lazy init beim ersten Turn (nicht in __init__, da sync)
+  - ON_MEMORY_QUERY Hook: working_memory.get_context_messages() -> ctx.messages prepend
+  - ON_STORED Hook: Turn aus finalem ctx bauen -> session_manager.add_turn()
+  - ctx.session_id beim ersten evolve auf active_session.id setzen
+- Block 6: Tests (test_session.py befuellen, ~20 Tests)
+- Block 7: Exports (__init__.py), MEMORY_GUIDE.md ausschreiben
+- Block 8: Abschluss, Commit, Uebergabe
+
+### Achtung / Hinweise fuer naechste Session
+
+- base.py ist 654 Zeilen — nur relevante Abschnitte lesen (grep nach ON_MEMORY_QUERY, ON_STORED, __init__, _run_pipeline o.ae.)
+- Session-Init MUSS lazy sein: BaseHeinzel.__init__ ist synchron, create_session() ist async
+- get_context_messages() gibt (user, assistant, user, assistant, ...) zurueck — beim prepend in ctx.messages die Reihenfolge pruefen (Working Memory zuerst, dann aktueller Input)
+- Token-Schaetzung in NoopWorkingMemory ist grob (len/4) — reicht fuer Noop, nicht fuer Produktion
+- TECH-DEBT-Kommentar auf Story HNZ-002-0017: base.py refactoren vor HNZ-003
+- Wekan-Bug: `wekan card <id> <board>` wirft JSON-Fehler — stattdessen `wekan --format json cards <board> <list>` + Python-Filter
+
+
 ---
 
 
