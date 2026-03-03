@@ -62,3 +62,25 @@ class EvaluationResult(BaseModel, frozen=True):
 
     score: float = 0.0   # 0.0 - 1.0
     reasoning: str = ""
+
+
+class CompactionResult(BaseModel, frozen=True):
+    """Ergebnis einer Compaction-Operation."""
+
+    kept_turns: tuple = ()          # Behaltene Turns (Turn-Objekte)
+    dropped_turns: tuple = ()       # Verworfene Turns
+    summary: str | None = None      # Destillat der verworfenen Turns
+    tokens_before: int = 0
+    tokens_after: int = 0
+    tokens_saved: int = 0
+    critical_preserved: bool = True
+
+
+class HandoverContext(BaseModel, frozen=True):
+    """Übergabe-Kontext beim Wechsel zu einer neuen Rolling Session."""
+
+    from_session_id: str
+    summary: str                        # Was war diese Session
+    critical_turns: tuple = ()          # Niemals verlorene Turns
+    facts_extracted: tuple[str, ...] = ()   # Destillierte Erkenntnisse
+    goals_open: tuple[str, ...] = ()        # Unerledigte Ziele

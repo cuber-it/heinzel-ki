@@ -222,6 +222,12 @@ class AddOn(ABC):
         """Hook: Session endet."""
         return AddOnResult(modified_ctx=ctx)
 
+    async def on_session_roll(
+        self, ctx: PipelineContext, history: ContextHistory | None = None
+    ) -> AddOnResult:
+        """Hook: Session-Roll ausgeloest."""
+        return AddOnResult(modified_ctx=ctx)
+
     async def on_error(self, ctx: PipelineContext, history: ContextHistory | None = None) -> AddOnResult:
         """Hook: Fehler in der Pipeline."""
         return AddOnResult(modified_ctx=ctx)

@@ -45,6 +45,7 @@ class HookPoint(str, enum.Enum):
     # Session
     ON_SESSION_START = "on_session_start"
     ON_SESSION_END = "on_session_end"
+    ON_SESSION_ROLL = "on_session_roll"
 
     # Fehler
     ON_ERROR = "on_error"

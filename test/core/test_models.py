@@ -40,7 +40,7 @@ from src.core.exceptions import (
 # ─── HookPoint ────────────────────────────────────────────────────────────────
 
 class TestHookPoint:
-    def test_all_23_values_present(self):
+    def test_all_24_values_present(self):
         expected = {
             "ON_INPUT", "ON_INPUT_PARSED", "ON_MEMORY_QUERY", "ON_MEMORY_HIT",
             "ON_MEMORY_MISS", "ON_CONTEXT_BUILD", "ON_CONTEXT_READY",
@@ -49,13 +49,13 @@ class TestHookPoint:
             "ON_LOOP_ITERATION", "ON_LOOP_END",
             "ON_OUTPUT", "ON_OUTPUT_SENT",
             "ON_STORE", "ON_STORED",
-            "ON_SESSION_START", "ON_SESSION_END",
+            "ON_SESSION_START", "ON_SESSION_END", "ON_SESSION_ROLL",
             "ON_ERROR",
         }
         assert {h.name for h in HookPoint} == expected
 
     def test_count(self):
-        assert len(HookPoint) == 23
+        assert len(HookPoint) == 24
 
     def test_is_string_enum(self):
         assert isinstance(HookPoint.ON_INPUT, str)

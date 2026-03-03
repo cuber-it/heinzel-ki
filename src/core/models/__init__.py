@@ -22,6 +22,8 @@ from .placeholders import (
     StepPlan,
     Reflection,
     EvaluationResult,
+    CompactionResult,
+    HandoverContext,
 )
 from .context import (
     PipelineContext,
@@ -45,6 +47,8 @@ __all__ = [
     "StepPlan",
     "Reflection",
     "EvaluationResult",
+    "CompactionResult",
+    "HandoverContext",
     "PipelineContext",
     "ContextDiff",
     "ContextHistory",
