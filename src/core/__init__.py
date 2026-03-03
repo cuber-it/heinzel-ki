@@ -1,5 +1,18 @@
 """heinzel_core — Kern des Heinzel-Systems."""
 
+from .config import (
+    DatabaseConfig,
+    HeinzelConfig,
+    HeinzelIdentity,
+    LoggingConfig,
+    ProviderDefaults,
+    ProviderEntry,
+    SessionConfig,
+    SkillsConfig,
+    find_config_file,
+    get_config,
+    reset_config,
+)
 from .base import BaseHeinzel, LLMProvider
 from .exceptions import (
     ContextLengthExceededError,
@@ -21,6 +34,18 @@ from .session import (
 from .session_noop import NoopMemoryGate, NoopSessionManager, NoopWorkingMemory
 
 __all__ = [
+    # Config
+    "DatabaseConfig",
+    "HeinzelConfig",
+    "HeinzelIdentity",
+    "LoggingConfig",
+    "ProviderDefaults",
+    "ProviderEntry",
+    "SessionConfig",
+    "SkillsConfig",
+    "find_config_file",
+    "get_config",
+    "reset_config",
     # Core
     "AddOnRouter",
     "BaseHeinzel",

@@ -1,0 +1,76 @@
+# heinzel.yaml.example
+# Vollständige Beispiel-Konfiguration für einen Heinzel-Agenten.
+# Kopieren nach heinzel.yaml und anpassen.
+#
+# ENV-Override: Alle Felder können per Umgebungsvariable überschrieben werden.
+# Schema: HEINZEL_<SECTION>_<FIELD>=value
+# Beispiel: HEINZEL_PROVIDER_DEFAULT=ollama
+#           HEINZEL_DATABASE_URL=postgresql://user:pass@localhost/heinzel
+
+# ---------------------------------------------------------------------------
+# Identität des Agenten
+# ---------------------------------------------------------------------------
+heinzel:
+  id: heinzel-01               # Eindeutige ID (z.B. für Multi-Agent-Setups)
+  name: Heinzel                # Anzeigename
+  role: assistant              # Rolle (assistant, researcher, coder, ...)
+  goal: >
+    Helfe dem Nutzer so gut wie möglich und löse Aufgaben
+    präzise, ehrlich und effizient.
+  backstory: >
+    Heinzel ist ein lokaler KI-Assistent, der im H.E.I.N.Z.E.L.-Framework
+    läuft und vollständig selbst gehostet wird.
+
+# ---------------------------------------------------------------------------
+# Provider-Einstellungen (Standard-Verhalten)
+# ---------------------------------------------------------------------------
+provider:
+  default: anthropic           # Welcher Provider standardmäßig genutzt wird
+  timeout: 60                  # Sekunden bis Timeout pro Request
+  retries: 3                   # Anzahl Wiederholungsversuche bei Fehlern
+
+# ---------------------------------------------------------------------------
+# Verfügbare Provider (Name → URL)
+# Jeder Provider läuft als eigenständiger Container-Service.
+# ---------------------------------------------------------------------------
+providers:
+  anthropic:
+    url: http://localhost:12101
+    name: Anthropic Claude
+  openai:
+    url: http://localhost:12102
+    name: OpenAI GPT
+  ollama:
+    url: http://localhost:12103
+    name: Ollama (lokal)
+
+# ---------------------------------------------------------------------------
+# Datenbank (optional — für persistente Sessions und Logs)
+# ---------------------------------------------------------------------------
+# database:
+#   url: postgresql+asyncpg://heinzel:secret@localhost:5432/heinzel
+#   pool_min: 1
+#   pool_max: 10
+
+# ---------------------------------------------------------------------------
+# Session-Verhalten
+# ---------------------------------------------------------------------------
+session:
+  max_history: 50              # Maximale Turns pro Session in der History
+  auto_resume: true            # Letzte Session bei Start automatisch fortsetzen
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  dialog_log_path: logs/dialog      # Verzeichnis für Dialog-Logs (JSON)
+  system_log_path: logs/system      # Verzeichnis für System-Logs
+  rotation_size_mb: 10              # Log-Rotation ab dieser Dateigröße
+  retention_days: 30                # Logs nach N Tagen löschen
+
+# ---------------------------------------------------------------------------
+# Skills / Addons
+# ---------------------------------------------------------------------------
+skills:
+  skills_dir: skills           # Verzeichnis mit Addon-Modulen
+  autoload: true               # Skills beim Start automatisch laden
