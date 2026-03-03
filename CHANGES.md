@@ -3,6 +3,21 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-03 — HNZ-002-0017 Abschluss (Commit 7684f9c)
+
+**BaseHeinzel Session-Integration + token-basiertes Working Memory**
+
+- `exceptions.py`: ContextLengthExceededError (tokens_sent, limit_discovered)
+- `session.py`: WorkingMemory ABC erweitert (max_tokens/max_turns statt capacity, estimated_tokens(), compact()); SessionManager.create_session() mit optionaler session_id; MemoryGateInterface vollstaendig
+- `session_noop.py`: NoopWorkingMemory token-basiert (Default 128k Token, 10k Turns); NoopSessionManager persistiert WorkingMemory-Instanz pro Session
+- `provider.py`: context_window Property + Setter (lazy-discovery via 400er)
+- `base.py`: _ensure_session() lazy, set_session_manager(), Working Memory in ON_MEMORY_QUERY prepended, Turn nach ON_STORED gespeichert, ContextLengthExceededError gefangen -> compact -> retry in _call_provider(); chat_stream() vollstaendig gleichgezogen; _build_messages_from_ctx() fixed (aktueller Input immer als letzte Message)
+- `__init__.py`: Session-Exports ergaenzt
+- `docs/MEMORY_GUIDE.md`: Schichtenmodell, Flow, Roadmap
+- `src/frontend/heinzel_cli.py`: !memory, !session, Kontext-Fuellstand nach jeder Antwort
+- `test/core/test_session.py`: 29 Tests (Session, Turn, Gate, WorkingMemory, SessionManager, BaseHeinzel-Integration)
+- Tech-Debt auf Story: base.py aufteilen vor HNZ-003
+
 ## [mvp-002] — 2026-03-03 — HNZ-002-0017 Teilimplementierung (Commit 31c0ca0)
 
 ### Was gemacht wurde
