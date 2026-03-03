@@ -3,7 +3,7 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
-## [mvp-002] — 2026-03-03 — HNZ-002-0007: Config-System (Commit TBD)
+## [mvp-002] — 2026-03-03 — HNZ-002-0007: Config-System (Commit 2d2cb84)
 
 **Config-System: YAML, ENV-Override, Singleton**
 
