@@ -8,7 +8,7 @@ Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
 ## [MVP-002] — 2026-03-03 — HNZ-002-0008: Provider-Transport + Runtime-Switch
 
-Commit: PENDING
+Commit: 977c49a
 
 ### src/core/provider.py (neu)
 - HttpLLMProvider implementiert LLMProvider-ABC (chat, stream)
