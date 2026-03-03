@@ -20,11 +20,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def build_messages(message: str) -> list[dict[str, Any]]:
-    """Minimal-Fallback: eine User-Message ohne Context."""
-    return [{"role": "user", "content": message}]
-
-
 def build_messages_from_ctx(ctx: PipelineContext) -> list[dict[str, Any]]:
     """Messages aus Context bauen.
 
@@ -51,7 +46,6 @@ async def call_provider(heinzel: BaseHeinzel, ctx: PipelineContext) -> PipelineC
     Ein pending Provider wird nach dem Call aktiviert.
     """
     messages = build_messages_from_ctx(ctx)
-    working_memory = await heinzel._session_manager.get_working_memory(ctx.session_id)
     heinzel._in_turn = True
     try:
         response = await heinzel._provider.chat(
@@ -68,6 +62,7 @@ async def call_provider(heinzel: BaseHeinzel, ctx: PipelineContext) -> PipelineC
         )
         if exc.limit_discovered and hasattr(heinzel._provider, "context_window"):
             heinzel._provider.context_window = exc.limit_discovered
+        working_memory = await heinzel._session_manager.get_working_memory(ctx.session_id)
         await working_memory.compact(keep_ratio=0.5)
         messages = build_messages_from_ctx(ctx)
         try:

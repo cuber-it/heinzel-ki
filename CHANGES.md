@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-03 — Code-Review: unnoetige Konstrukte entfernt (Commit PLACEHOLDER)
+
+**Cleanup nach Refactoring — kein Verhaltensaenderung**
+
+- `base.py`: Delegate-Methoden entfernt (chat/chat_stream rufen _pipeline/_provider_bridge direkt auf); _working_memory toter State entfernt; _run_pipeline bleibt als einziger Delegate (wird in Tests direkt aufgerufen)
+- `_provider_bridge.py`: build_messages() toter Code entfernt; working_memory lazy — wird jetzt nur noch bei ContextLengthExceededError geholt statt bei jedem LLM-Call
+- `_dialog_logger.py`: _enabled-Flag entfernt (redundant: _file=None genuegt als disabled-Marker)
+- 399 Tests gruen, flake8 sauber
+
 ## [mvp-002] — 2026-03-03 — Tech-Debt: base.py aufgeteilt (Commit 1ebfae3)
 
 **Refactoring: base.py in saubere Module aufgeteilt — keine Verhaltensaenderung**

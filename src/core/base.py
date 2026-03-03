@@ -33,7 +33,7 @@ from ._pipeline import (
     run_post_phases,
     run_pre_phases,
 )
-from ._provider_bridge import build_messages, build_messages_from_ctx, call_provider
+from ._provider_bridge import build_messages_from_ctx
 from .provider import LLMProvider
 from .models import (
     ContextHistory,
@@ -89,7 +89,6 @@ class BaseHeinzel:
             max_tokens=_max_tokens,
             max_turns=_max_turns,
         )
-        self._working_memory: WorkingMemory | None = None   # lazy via _ensure_session()
 
     # -------------------------------------------------------------------------
     # Properties
@@ -126,7 +125,6 @@ class BaseHeinzel:
         Default ist NoopSessionManager (in-memory, kein Persist).
         """
         self._session_manager = manager
-        self._working_memory = None   # Working Memory zuruecksetzen — lazy neu holen
 
     async def _ensure_session(self, session_id: str | None) -> tuple[str, WorkingMemory]:
         """Lazy Session-Init: Session anlegen oder fortsetzen, Working Memory holen.
@@ -235,7 +233,7 @@ class BaseHeinzel:
         """Chat-Runde. Gibt immer str zurueck — nie Exception nach aussen."""
         try:
             message = await self.on_before_chat(message)
-            ctx_history, final_ctx = await self._run_pipeline(message, session_id)
+            ctx_history, final_ctx = await run_pipeline(self, message, session_id)
             response = final_ctx.response or final_ctx.stream_buffer or ""
             return await self.on_after_chat(response, ctx_history)
         except Exception as exc:
@@ -261,7 +259,7 @@ class BaseHeinzel:
             if halted:
                 return
 
-            ctx, halted = await self._phase(HookPoint.ON_LLM_REQUEST, ctx, ctx_history)
+            ctx, halted = await phase(self, HookPoint.ON_LLM_REQUEST, ctx, ctx_history)
             if halted:
                 return
 
@@ -269,7 +267,7 @@ class BaseHeinzel:
             stream_buffer = ""
             try:
                 async for chunk in self._provider.stream(
-                    messages=self._build_messages_from_ctx(ctx),
+                    messages=build_messages_from_ctx(ctx),
                     system_prompt=ctx.system_prompt,
                     model=ctx.model,
                 ):
@@ -288,8 +286,8 @@ class BaseHeinzel:
                 loop_done=True,
             )
             ctx_history.push(ctx)
-            ctx, _ = await self._dispatch_and_apply(
-                HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
+            ctx, _ = await dispatch_and_apply(
+                self, HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
             )
             await run_post_phases(
                 self, ctx, ctx_history, sid, message, stream_buffer, working_memory
@@ -303,6 +301,12 @@ class BaseHeinzel:
     # Subklassen-Hooks
     # -------------------------------------------------------------------------
 
+    async def _run_pipeline(
+        self, message: str, session_id: str | None
+    ) -> tuple[ContextHistory, PipelineContext]:
+        """Pipeline-Durchlauf — Implementierung in _pipeline."""
+        return await run_pipeline(self, message, session_id)
+
     async def on_before_chat(self, message: str) -> str:
         """Optionaler Hook vor der Pipeline. Kann message transformieren."""
         return message
@@ -310,50 +314,6 @@ class BaseHeinzel:
     async def on_after_chat(self, response: str, ctx_history: ContextHistory) -> str:
         """Optionaler Hook nach der Pipeline. Kann response transformieren."""
         return response
-
-    # -------------------------------------------------------------------------
-    # Pipeline
-    # -------------------------------------------------------------------------
-
-    async def _run_pipeline(
-        self, message: str, session_id: str | None
-    ) -> tuple[ContextHistory, PipelineContext]:
-        """Delegate: Pipeline-Durchlauf — Implementierung in _pipeline."""
-        return await run_pipeline(self, message, session_id)
-
-    async def _phase(
-        self,
-        hook: HookPoint,
-        ctx: PipelineContext,
-        ctx_history: ContextHistory,
-    ) -> tuple[PipelineContext, bool]:
-        """Delegate: Pipeline-Phase — Implementierung in _pipeline."""
-        return await phase(self, hook, ctx, ctx_history)
-
-    async def _dispatch_and_apply(
-        self,
-        hook: HookPoint,
-        ctx: PipelineContext,
-        ctx_history: ContextHistory,
-    ) -> tuple[PipelineContext, bool]:
-        """Delegate: Router aufrufen — Implementierung in _pipeline."""
-        return await dispatch_and_apply(self, hook, ctx, ctx_history)
-
-    async def _call_provider(self, ctx: PipelineContext) -> PipelineContext:
-        """Delegate: LLM aufrufen — Implementierung in _provider_bridge."""
-        return await call_provider(self, ctx)
-
-    # -------------------------------------------------------------------------
-    # Hilfsmethoden
-    # -------------------------------------------------------------------------
-
-    def _build_messages(self, message: str) -> list[dict[str, Any]]:
-        """Delegate: Minimal-Fallback — Implementierung in _provider_bridge."""
-        return build_messages(message)
-
-    def _build_messages_from_ctx(self, ctx: PipelineContext) -> list[dict[str, Any]]:
-        """Delegate: Messages aus Context bauen — Implementierung in _provider_bridge."""
-        return build_messages_from_ctx(ctx)
 
     @staticmethod
     def _load_config(

@@ -26,9 +26,9 @@ class _DialogLogger:
         log_dir = Path(log_cfg.get("log_dir", "./logs"))
         self.log_addons: bool = bool(log_cfg.get("log_addons", False))
         self.log_mcp: bool = bool(log_cfg.get("log_mcp", False))
-        self._enabled = True
         self._turn_nr: int = 0    # Laufende Nummer: USER+HEINZEL teilen sich eine Nr.
         self._path: Path | None = None
+        self._file = None
 
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -39,8 +39,6 @@ class _DialogLogger:
             logging.getLogger(__name__).error(
                 "DialogLogger: Datei konnte nicht geoeffnet werden: %s", exc
             )
-            self._enabled = False
-            self._file = None
 
     @property
     def log_path(self) -> Path | None:
@@ -48,7 +46,7 @@ class _DialogLogger:
         return self._path
 
     def _write(self, line: str) -> None:
-        if not self._enabled or self._file is None:
+        if self._file is None:
             return
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         try:
