@@ -1,5 +1,14 @@
 """heinzel_core — Kern des Heinzel-Systems."""
 
+from .compaction import (
+    CompactionRegistry,
+    CompactionStrategy,
+    NoopRollingSessionPolicy,
+    RollingSessionPolicy,
+    RollingSessionRegistry,
+    SummarizingCompactionStrategy,
+    TruncationCompactionStrategy,
+)
 from .config import (
     DatabaseConfig,
     HeinzelConfig,
@@ -34,6 +43,14 @@ from .session import (
 from .session_noop import NoopMemoryGate, NoopSessionManager, NoopWorkingMemory
 
 __all__ = [
+    # Compaction
+    "CompactionRegistry",
+    "CompactionStrategy",
+    "NoopRollingSessionPolicy",
+    "RollingSessionPolicy",
+    "RollingSessionRegistry",
+    "SummarizingCompactionStrategy",
+    "TruncationCompactionStrategy",
     # Config
     "DatabaseConfig",
     "HeinzelConfig",
