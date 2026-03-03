@@ -73,6 +73,11 @@ class SessionError(HeinzelError):
         super().__init__(message, details)
 
 
+class SessionNotFoundError(SessionError):
+    """Session mit der angegebenen ID nicht gefunden."""
+    pass
+
+
 # --- Strategy ---
 
 class StrategyError(HeinzelError):
@@ -144,6 +149,7 @@ __all__ = [
     "DatabaseError",
     "ConfigError",
     "SessionError",
+    "SessionNotFoundError",
     "StrategyError",
     "AddOnError",
     "AddOnDependencyError",

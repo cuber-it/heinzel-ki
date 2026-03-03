@@ -65,6 +65,8 @@ class PipelineContext(BaseModel, frozen=True):
     # --- Meta ---
     session_id: str = ""
     heinzel_id: str = ""
+    working_memory_turns: int = 0
+    memory_tokens_used: int = 0
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     phase: HookPoint = HookPoint.ON_INPUT
     metadata: dict[str, Any] = Field(default_factory=dict)
