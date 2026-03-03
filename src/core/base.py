@@ -24,25 +24,15 @@ from typing import Any, AsyncGenerator
 from uuid import uuid4
 
 from .addon import AddOn
-from .exceptions import AddOnError
-from ._dialog_logger import _DialogLogger
-from ._pipeline import (
-    dispatch_and_apply,
-    phase,
-    run_pipeline,
-    run_post_phases,
-    run_pre_phases,
-)
-from ._provider_bridge import build_messages_from_ctx
+from .exceptions import AddOnError, SessionNotFoundError
+from .models import ContextHistory, HookPoint, PipelineContext
 from .provider import LLMProvider
-from .models import (
-    ContextHistory,
-    HookPoint,
-    PipelineContext,
-)
 from .router import AddOnRouter
 from .session import SessionManager, WorkingMemory
 from .session_noop import NoopSessionManager
+from ._dialog_logger import _DialogLogger
+from ._pipeline import dispatch_and_apply, phase, run_pipeline, run_post_phases, run_pre_phases
+from ._provider_bridge import build_messages_from_ctx
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +122,6 @@ class BaseHeinzel:
         Gibt (session_id, working_memory) zurueck.
         Wird beim ersten Turn in _run_pipeline() aufgerufen.
         """
-        from .exceptions import SessionNotFoundError
-
         if session_id is not None:
             # Explizite session_id: vorhandene Session fortsetzen
             try:
@@ -297,15 +285,15 @@ class BaseHeinzel:
             logger.error("chat_stream() Fehler: %s", exc, exc_info=True)
             yield f"[Fehler: {exc}]"
 
-    # -------------------------------------------------------------------------
-    # Subklassen-Hooks
-    # -------------------------------------------------------------------------
-
     async def _run_pipeline(
         self, message: str, session_id: str | None
     ) -> tuple[ContextHistory, PipelineContext]:
         """Pipeline-Durchlauf — Implementierung in _pipeline."""
         return await run_pipeline(self, message, session_id)
+
+    # -------------------------------------------------------------------------
+    # Subklassen-Hooks
+    # -------------------------------------------------------------------------
 
     async def on_before_chat(self, message: str) -> str:
         """Optionaler Hook vor der Pipeline. Kann message transformieren."""
