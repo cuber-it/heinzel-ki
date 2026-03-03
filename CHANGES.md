@@ -3,7 +3,7 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
-## [mvp-002] — 2026-03-03 — Tech-Debt: base.py aufgeteilt (Commit PLACEHOLDER)
+## [mvp-002] — 2026-03-03 — Tech-Debt: base.py aufgeteilt (Commit 1ebfae3)
 
 **Refactoring: base.py in saubere Module aufgeteilt — keine Verhaltensaenderung**
 
