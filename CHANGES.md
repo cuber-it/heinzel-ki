@@ -6,6 +6,50 @@ Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 ---
 
 
+## [MVP-002] — 2026-03-03 — HNZ-002-0008: Provider-Transport + Runtime-Switch
+
+Commit: PENDING
+
+### src/core/provider.py (neu)
+- HttpLLMProvider implementiert LLMProvider-ABC (chat, stream)
+- Management-API: health(), list_models(), set_model()
+- Properties: name, base_url, current_model
+- ProviderError bei HTTP-Fehlern (status_code + detail)
+- Kein LLM-spezifischer Code — spricht gegen unsere eigene Service-API
+
+### src/core/provider_registry.py (neu)
+- ProviderRegistry: laedt Provider-Liste aus providers.yaml
+- Config-Pfad-Aufloesung: Konstruktor > HEINZEL_PROVIDERS_CONFIG > ./providers.yaml
+- startup(): load_config + check_all + ersten healthy Provider aktivieren
+- check_all(): pingt alle Provider per /health
+- switch_to(name): health-Check + swap
+- fallback(): naechsten healthy Provider aktivieren
+- reload_config(): hot-reload mit Beibehaltung des aktiven Providers wenn moeglich
+- ConfigError bei fehlender/leerer Config, ProviderError wenn kein Provider healthy
+
+### src/core/base.py
+- set_provider(provider): health-Check + sofortiger oder turn-safer Swap
+- _pending_provider + _in_turn: Provider-Wechsel wird nach laufendem LLM-Turn aktiviert
+
+### src/core/__init__.py
+- HttpLLMProvider + ProviderRegistry exportiert
+
+### src/frontend/heinzel_cli.py
+- Temporaere Inline-Implementierung entfernt
+- Import aus core: HttpLLMProvider
+- Tote Imports entfernt (json, httpx, AsyncGenerator)
+- Default-Port 12002 -> 12101 korrigiert
+
+### test/core/test_provider.py (neu)
+- 35 Tests: HttpLLMProvider (properties, chat, stream, health, list_models, set_model)
+- ProviderRegistry (load_config, check_all, switch_to, fallback, reload_config, Pfad-Aufloesung)
+- BaseHeinzel.set_provider (health-Check, unhealthy-Ablehnung, turn-safe swap)
+- Kein echter Server — unittest.mock fuer alle HTTP-Calls
+
+### Gesamt: 369 Tests gruen (vorher 334)
+
+---
+
 ## [MVP-002] — 2026-03-01 — HNZ-002-0003: AddOnRouter
 
 Commit: be6dc46

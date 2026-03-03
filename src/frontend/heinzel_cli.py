@@ -4,8 +4,8 @@
 Testwerkzeug und Referenzimplementierung — kein Produkt.
 Beweist dass der Core als Bibliothek funktioniert.
 
-Hardcodes (absichtlich, temporaer bis HNZ-002-0007/0008):
-  - Provider-URL: http://localhost:12002
+Defaults (ueberschreibbar per Config):
+  - Provider-URL: http://localhost:12101
   - Log-Dir:      ./logs
   - Heinzel-Name: heinzel-1
   - Modell:       aus Provider-Default
@@ -23,7 +23,7 @@ Config-YAML (optional):
     name: mein-heinzel
     id: optional-feste-id
   provider:
-    url: http://localhost:12002
+    url: http://localhost:12101
     model: ""
   logging:
     log_dir: ./logs
@@ -35,81 +35,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
-import httpx
 import yaml
 
 # Core — einzige externe Abhaengigkeit
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from core import BaseHeinzel, LLMProvider
-
-
-# =============================================================================
-# HttpLLMProvider — spricht mit dem laufenden Provider-Service
-# TODO: wird durch HNZ-002-0008 (Provider-Transport) ersetzt
-# =============================================================================
-
-class HttpLLMProvider(LLMProvider):
-    """HTTP-Client gegen den Heinzel Provider-Service.
-
-    Unterstuetzt /chat (blockierend) und /chat/stream (SSE).
-    Temporaere Implementierung bis HNZ-002-0008.
-    """
-
-    def __init__(self, base_url: str, model: str = "") -> None:
-        self._base_url = base_url.rstrip("/")
-        self._model = model
-
-    async def chat(
-        self,
-        messages: list[dict[str, Any]],
-        system_prompt: str = "",
-        model: str = "",
-    ) -> str:
-        payload: dict[str, Any] = {"messages": messages}
-        if system_prompt:
-            payload["system"] = system_prompt
-        if model or self._model:
-            payload["model"] = model or self._model
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(f"{self._base_url}/chat", json=payload)
-            resp.raise_for_status()
-            return resp.json().get("content", "")
-
-    async def stream(
-        self,
-        messages: list[dict[str, Any]],
-        system_prompt: str = "",
-        model: str = "",
-    ) -> AsyncGenerator[str, None]:
-        payload: dict[str, Any] = {"messages": messages}
-        if system_prompt:
-            payload["system"] = system_prompt
-        if model or self._model:
-            payload["model"] = model or self._model
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", f"{self._base_url}/chat/stream", json=payload
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        if chunk.get("type") == "content_delta" and chunk.get("content"):
-                            yield chunk["content"]
-                    except json.JSONDecodeError:
-                        continue
+from core import BaseHeinzel, HttpLLMProvider
 
 
 # =============================================================================
@@ -191,7 +125,7 @@ def load_config(config_path: str | None) -> dict[str, Any]:
             "name": "heinzel-1",
         },
         "provider": {
-            "url": "http://localhost:12002",
+            "url": "http://localhost:12101",
             "model": "",
         },
         "logging": {
@@ -238,7 +172,7 @@ def main() -> None:
     heinzel_name: str = cfg["heinzel"]["name"]
     heinzel_id: str | None = cfg["heinzel"].get("id", None)
 
-    provider = HttpLLMProvider(base_url=provider_url, model=model)
+    provider = HttpLLMProvider(name="cli-provider", base_url=provider_url, model=model)
     heinzel = BaseHeinzel(
         provider=provider,
         name=heinzel_name,

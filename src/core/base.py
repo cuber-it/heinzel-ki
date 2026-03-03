@@ -189,6 +189,8 @@ class BaseHeinzel:
         self._addons: list[AddOn] = []   # Reihenfolge fuer Lifecycle
         self._connected = False
         self._dialog_log = _DialogLogger(self._heinzel_id, self._config)
+        self._pending_provider: LLMProvider | None = None   # turn-safe swap
+        self._in_turn: bool = False                         # laufender LLM-Call
 
     # -------------------------------------------------------------------------
     # Properties
@@ -213,6 +215,36 @@ class BaseHeinzel:
     @property
     def addon_router(self) -> AddOnRouter:
         return self._router
+
+    async def set_provider(self, provider: LLMProvider) -> bool:
+        """Provider wechseln — mit health-Check und turn-safem Swap.
+
+        Laeuft gerade ein LLM-Call, wird der neue Provider als pending
+        gesetzt und erst nach dem naechsten Turn aktiviert.
+
+        Returns True bei Erfolg, False wenn Provider unhealthy.
+        """
+        # Health-Check — provider muss health()-Methode haben wenn vorhanden
+        healthy = True
+        if hasattr(provider, "health"):
+            try:
+                healthy = await provider.health()
+            except Exception as exc:
+                logger.warning("set_provider health-Check fehlgeschlagen: %s", exc)
+                healthy = False
+
+        if not healthy:
+            logger.warning("set_provider abgelehnt: Provider unhealthy")
+            return False
+
+        if self._in_turn:
+            logger.info("set_provider: Turn laeuft — Provider als pending gesetzt")
+            self._pending_provider = provider
+        else:
+            self._provider = provider
+            logger.info("set_provider: Provider sofort gewechselt auf %s", provider)
+
+        return True
 
     # -------------------------------------------------------------------------
     # Lifecycle
@@ -548,8 +580,12 @@ class BaseHeinzel:
 
         Setzt loop_done=True als Fallback — kein LoopControl-AddOn vorhanden.
         Ein LoopControl-AddOn kann loop_done via modified_ctx auf False setzen.
+
+        Turn-Safety: _in_turn-Flag verhindert Provider-Swap waehrend des Calls.
+        Ein pending Provider wird nach dem Call aktiviert.
         """
         messages = self._build_messages_from_ctx(ctx)
+        self._in_turn = True
         try:
             response = await self._provider.chat(
                 messages=messages,
@@ -559,6 +595,13 @@ class BaseHeinzel:
         except Exception as exc:
             logger.error("Provider-Fehler: %s", exc, exc_info=True)
             response = f"[Provider-Fehler: {exc}]"
+        finally:
+            self._in_turn = False
+            # Pending swap nach Turn-Ende anwenden
+            if self._pending_provider is not None:
+                self._provider = self._pending_provider
+                self._pending_provider = None
+                logger.info("set_provider: pending Provider aktiviert nach Turn-Ende")
 
         return ctx.evolve(
             phase=HookPoint.ON_LLM_RESPONSE,
