@@ -3,6 +3,16 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-03 — HNZ-002-0018 Rolling Sessions Integration (Commit e497d2f)
+
+- session.py: WorkingMemory.compaction_strategy ABC Property ergaenzt
+- session.py: SessionManager.maybe_roll(budget) -> HandoverContext | None ergaenzt
+- session_noop.py: NoopWorkingMemory.compact() nutzt CompactionRegistry statt FIFO
+- session_noop.py: NoopSessionManager.maybe_roll() implementiert (Policy via Registry)
+- compaction.py: Turn.raw_input/final_response statt user_message/assistant_message
+- test_session.py: compact-Tests auf neues Verhalten aktualisiert (2 neue Tests)
+- 412 Tests gruen
+
 ## [mvp-002] — 2026-03-03 — HNZ-002-0018 Compaction Interfaces (Commit f5fcafc)
 
 **CompactionStrategy + Registry + SummarizingCompactionStrategy (Claude-Default)**
