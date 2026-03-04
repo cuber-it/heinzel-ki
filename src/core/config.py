@@ -1,4 +1,4 @@
-"""heinzel_core.config.
+"""core.config.
 
 Konfigurationssystem: YAML, ENV-Override, Singleton.
 """
@@ -16,11 +16,11 @@ from pydantic import BaseModel, field_validator
 # ---------------------------------------------------------------------------
 
 
-class HeinzelIdentity(BaseModel):
-    """Identität des Heinzel-Agenten."""
+class AgentIdentity(BaseModel):
+    """Identität des Agenten."""
 
-    id: str = "heinzel-01"
-    name: str = "Heinzel"
+    id: str = "agent-01"
+    name: str = "Agent"
     role: str = "assistant"
     goal: str = "Helfe dem Nutzer so gut wie möglich."
     backstory: str = ""
@@ -77,10 +77,10 @@ class SkillsConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class HeinzelConfig(BaseModel):
-    """Vollständige Heinzel-Konfiguration."""
+class AgentConfig(BaseModel):
+    """Vollständige Agent-Konfiguration."""
 
-    heinzel: HeinzelIdentity = HeinzelIdentity()
+    agent: AgentIdentity = AgentIdentity()
     provider: ProviderDefaults = ProviderDefaults()
     providers: dict[str, ProviderEntry] = {}
     database: DatabaseConfig | None = None
@@ -104,7 +104,7 @@ class HeinzelConfig(BaseModel):
 # ENV-Override
 # ---------------------------------------------------------------------------
 
-_ENV_PREFIX = "HEINZEL_"
+_ENV_PREFIX = "AGENT_"
 
 
 def _apply_env_overrides(data: dict) -> dict:
@@ -147,10 +147,10 @@ def find_config_file() -> Path | None:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_config_cache: HeinzelConfig | None = None
+_config_cache: AgentConfig | None = None
 
 
-def get_config(path: str | Path | None = None) -> HeinzelConfig:
+def get_config(path: str | Path | None = None) -> AgentConfig:
     """Lädt und cached die Konfiguration.
 
     Args:
@@ -158,7 +158,7 @@ def get_config(path: str | Path | None = None) -> HeinzelConfig:
               find_config_file() in Standardpfaden. Ohne Datei: Defaults.
 
     Returns:
-        HeinzelConfig-Singleton.
+        AgentConfig-Singleton.
     """
     global _config_cache
     if _config_cache is not None:
@@ -177,7 +177,7 @@ def get_config(path: str | Path | None = None) -> HeinzelConfig:
 
     data = _apply_env_overrides(data)
 
-    _config_cache = HeinzelConfig(**data)
+    _config_cache = AgentConfig(**data)
     return _config_cache
 
 

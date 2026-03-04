@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from core.config import (
-    HeinzelConfig,
+    AgentConfig,
     find_config_file,
     get_config,
     reset_config,
@@ -32,8 +32,8 @@ def clean_config(tmp_path, monkeypatch):
 def test_defaults_without_file():
     """Ohne YAML-Datei und ohne ENV → vollständige Defaults."""
     cfg = get_config()
-    assert isinstance(cfg, HeinzelConfig)
-    assert cfg.heinzel.name == "Heinzel"
+    assert isinstance(cfg, AgentConfig)
+    assert cfg.agent.name == "Agent"
     assert cfg.provider.default == "anthropic"
     assert cfg.provider.timeout == 60
     assert cfg.provider.retries == 3
@@ -53,7 +53,7 @@ def test_load_yaml(tmp_path):
     yaml_file = tmp_path / "heinzel.yaml"
     yaml_file.write_text(
         textwrap.dedent("""\
-        heinzel:
+        agent:
           id: test-01
           name: TestHeinzel
           role: tester
@@ -81,8 +81,8 @@ def test_load_yaml(tmp_path):
     )
     cfg = get_config(path=yaml_file)
 
-    assert cfg.heinzel.id == "test-01"
-    assert cfg.heinzel.name == "TestHeinzel"
+    assert cfg.agent.id == "test-01"
+    assert cfg.agent.name == "TestHeinzel"
     assert cfg.provider.default == "ollama"
     assert cfg.provider.timeout == 30
     assert cfg.providers["ollama"].url == "http://localhost:11434"
@@ -117,22 +117,22 @@ def test_load_yaml_with_database(tmp_path):
 
 
 def test_env_override_provider_default(monkeypatch):
-    """HEINZEL_PROVIDER_DEFAULT überschreibt provider.default."""
-    monkeypatch.setenv("HEINZEL_PROVIDER_DEFAULT", "openai")
+    """AGENT_PROVIDER_DEFAULT überschreibt provider.default."""
+    monkeypatch.setenv("AGENT_PROVIDER_DEFAULT", "openai")
     cfg = get_config()
     assert cfg.provider.default == "openai"
 
 
 def test_env_override_session_max_history(monkeypatch):
-    """HEINZEL_SESSION_MAX_HISTORY überschreibt session.max_history."""
-    monkeypatch.setenv("HEINZEL_SESSION_MAX_HISTORY", "99")
+    """AGENT_SESSION_MAX_HISTORY überschreibt session.max_history."""
+    monkeypatch.setenv("AGENT_SESSION_MAX_HISTORY", "99")
     cfg = get_config()
     assert cfg.session.max_history == 99
 
 
 def test_env_override_database_url(monkeypatch):
-    """HEINZEL_DATABASE_URL setzt database.url."""
-    monkeypatch.setenv("HEINZEL_DATABASE_URL", "sqlite:///test.db")
+    """AGENT_DATABASE_URL setzt database.url."""
+    monkeypatch.setenv("AGENT_DATABASE_URL", "sqlite:///test.db")
     cfg = get_config()
     assert cfg.database is not None
     assert cfg.database.url == "sqlite:///test.db"
@@ -142,7 +142,7 @@ def test_env_override_wins_over_yaml(tmp_path, monkeypatch):
     """ENV-Override hat Vorrang gegenüber YAML-Wert."""
     yaml_file = tmp_path / "heinzel.yaml"
     yaml_file.write_text("provider:\n  default: ollama\n", encoding="utf-8")
-    monkeypatch.setenv("HEINZEL_PROVIDER_DEFAULT", "anthropic")
+    monkeypatch.setenv("AGENT_PROVIDER_DEFAULT", "anthropic")
     cfg = get_config(path=yaml_file)
     assert cfg.provider.default == "anthropic"
 

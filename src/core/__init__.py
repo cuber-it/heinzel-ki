@@ -19,8 +19,8 @@ from .compaction import (
 )
 from .config import (
     DatabaseConfig,
-    HeinzelConfig,
-    HeinzelIdentity,
+    AgentConfig,
+    AgentIdentity,
     LoggingConfig,
     ProviderDefaults,
     ProviderEntry,
@@ -61,8 +61,8 @@ __all__ = [
     "TruncationCompactionStrategy",
     # Config
     "DatabaseConfig",
-    "HeinzelConfig",
-    "HeinzelIdentity",
+    "AgentConfig",
+    "AgentIdentity",
     "LoggingConfig",
     "ProviderDefaults",
     "ProviderEntry",
