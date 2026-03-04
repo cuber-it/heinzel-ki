@@ -329,6 +329,9 @@ class Runner:
                     "chat_stream: Reasoning-Schritt '%s' (iter %d)",
                     plan.next_action, ctx.loop_iteration,
                 )
+                # Progress-Indikator: User sieht dass etwas passiert
+                phase_name = ctx.metadata.get("hnz_rt_phase", plan.next_action)
+                yield f"\n[⟳ {phase_name} ...]\n"
                 ctx = await call_provider(self, ctx)
                 ctx_history.push(ctx)
 
