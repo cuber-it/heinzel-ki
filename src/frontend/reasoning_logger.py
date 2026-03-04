@@ -88,7 +88,6 @@ class ReasoningLoggerAddOn(AddOn):
         if plan is None:
             return AddOnResult()
 
-        meta = ctx.metadata
         entry_start = {
             "event": "step_start",
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -96,8 +95,6 @@ class ReasoningLoggerAddOn(AddOn):
             "session_id": ctx.session_id,
             "agent_id": ctx.agent_id,
             "iteration": ctx.loop_iteration,
-            "phase": meta.get("hnz_rt_phase", "?"),
-            "budget_used": meta.get("hnz_rt_budget_used", 0),
             "next_action": plan.next_action,
             "focus": plan.focus or "",
             "prompt_addition_preview": (plan.prompt_addition or "")[:_PROMPT_PREVIEW_LEN],
@@ -126,7 +123,6 @@ class ReasoningLoggerAddOn(AddOn):
         start_ms = pending.get("ts_ms", now_ms) if pending else now_ms
         duration_ms = now_ms - start_ms
 
-        meta = ctx.metadata
         reflection = ctx.reflection
         response = ctx.response or ctx.stream_buffer or ""
 
@@ -143,12 +139,8 @@ class ReasoningLoggerAddOn(AddOn):
             # Response
             "response_len": len(response),
             "response_preview": response[:_PREVIEW_LEN],
-            # Reasoning-Metadaten (DeepReasoningStrategy)
-            "phase": meta.get("hnz_rt_phase", "?"),
-            "budget_used": meta.get("hnz_rt_budget_used", 0),
-            # Confidence
-            "confidence": meta.get("hnz_rt_confidence", None),
-            # Reflection
+            # Reflection — confidence/insight kommen direkt aus Strategy.reflect()
+            "confidence": reflection.confidence if reflection else None,
             "step_useful": reflection.step_useful if reflection else None,
             "insight": reflection.insight if reflection else None,
             "reflection_confidence": reflection.confidence if reflection else None,
