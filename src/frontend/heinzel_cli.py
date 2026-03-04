@@ -1,6 +1,8 @@
 #!/home/ucuber/Workspace/heinzel-ki/.venv/bin/python3
 """heinzel_cli.py — Interaktiver Heinzel auf dem Core-Runner.
 
+Demonstriert und nutzt alle Core-Features inkl. Feedback und Selector.
+
 Demonstriert und nutzt alle Core-Features:
   - Runner mit HttpLLMProvider
   - NoopSessionManager mit Session-Tracking
@@ -16,6 +18,9 @@ Kommandos:
   !strategy  — Aktive Reasoning-Strategie anzeigen/wechseln
   !compact   — Compaction-Strategie anzeigen
   !config    — Aktive Konfiguration anzeigen
+  !feedback  — Letzten Turn bewerten (1-5, optional Kommentar)
+  !phases    — Reasoning-Phasen ein-/ausblenden (on|off)
+  !selector  — Selector-Stats anzeigen
 
 Config-YAML (optional, Suchpfad: ./heinzel.yaml, ./config/heinzel.yaml):
 
@@ -187,6 +192,85 @@ def handle_config(cfg: dict[str, Any]) -> None:
 
 
 # =============================================================================
+# Feedback, Phases, Selector
+# =============================================================================
+
+_feedback_store = SqliteFeedbackStore()
+_phases_visible: bool = True          # CLI-State: Phasen sichtbar?
+_last_turn: dict = {}                 # {turn_id, strategy_used} des letzten Turns
+
+
+async def handle_feedback(runner: Runner) -> None:
+    """!feedback — letzten Turn bewerten."""
+    if not _last_turn:
+        print("[Noch kein Turn in dieser Session bewertet werden kann.]")
+        return
+
+    try:
+        raw = input("  Bewertung (1-5): ").strip()
+        rating = int(raw)
+        if not 1 <= rating <= 5:
+            raise ValueError
+    except ValueError:
+        print("[Ungültig — bitte 1-5 eingeben]")
+        return
+
+    comment = input("  Kommentar (Enter = leer): ").strip()
+
+    event = FeedbackEvent(
+        turn_id=_last_turn.get("turn_id", ""),
+        session_id=_last_turn.get("session_id", ""),
+        rating=rating,
+        comment=comment,
+        strategy_used=_last_turn.get("strategy_used", ""),
+    )
+    await _feedback_store.log_feedback(event)
+    stars = "★" * rating + "☆" * (5 - rating)
+    print(f"[Feedback gespeichert: {stars}]")
+
+
+def handle_phases(args: str) -> None:
+    """!phases [on|off] — Reasoning-Phasen ein-/ausblenden."""
+    global _phases_visible
+    arg = args.strip().lower()
+    if arg == "on":
+        _phases_visible = True
+        print("[Phasen-Output: sichtbar]")
+    elif arg == "off":
+        _phases_visible = False
+        print("[Phasen-Output: ausgeblendet — nur finale Antwort]")
+    else:
+        status = "on" if _phases_visible else "off"
+        print(f"[Phasen aktuell: {status}  —  !phases on|off]")
+
+
+async def handle_selector_stats() -> None:
+    """!selector — Selector + Feedback Stats."""
+    sel_stats = await _feedback_store.get_stats()
+    fb_stats = await _feedback_store.get_feedback_stats()
+
+    print("\n--- Selector Stats ---")
+    if sel_stats:
+        for s in sel_stats:
+            print(f"  {s['final_strategy']:<20} total={s['total']}  "
+                  f"heuristik={s['via_heuristic']}  llm={s['via_llm']}  "
+                  f"override={s['overridden']}")
+    else:
+        print("  (noch keine Daten)")
+
+    print("\n--- Feedback Stats ---")
+    if fb_stats:
+        for s in fb_stats:
+            stars = "★" * round(s['avg_rating']) + "☆" * (5 - round(s['avg_rating']))
+            print(f"  {s['strategy_used']:<20} ∅{s['avg_rating']}  {stars}  "
+                  f"({s['total']} Bewertungen, {s['with_comment']} mit Kommentar)")
+    else:
+        print("  (noch keine Bewertungen)")
+    print("--- Ende ---
+")
+
+
+# =============================================================================
 # Status-Zeile nach jeder Antwort
 # =============================================================================
 
@@ -264,18 +348,44 @@ async def run_repl(runner: Runner, cfg: dict[str, Any]) -> None:
             elif cmd_lower == "!config":
                 handle_config(cfg)
                 continue
+            elif cmd_lower == "!feedback":
+                await handle_feedback(runner)
+                continue
+            elif cmd_lower == "!phases":
+                handle_phases(rest)
+                continue
+            elif cmd_lower == "!selector":
+                await handle_selector_stats()
+                continue
             elif user_input.startswith("!"):
                 print(
                     f"[Unbekanntes Kommando: {cmd}  —  "
-                    f"!quit !history !memory !session !strategy !compact !config]"
+                    f"!quit !history !memory !session !strategy "
+                    f"!compact !config !feedback !phases !selector]"
                 )
                 continue
 
             # Chat
             print("Heinzel: ", end="", flush=True)
             try:
+                session = runner.session_manager.active_session
+                sid = session.id if session else ""
                 async for chunk in runner.chat_stream(user_input):
-                    print(chunk, end="", flush=True)
+                    if not _phases_visible and chunk.startswith("\n\n▶ ["):
+                        # Phasen-Block überspringen bis nächster Block oder Ende
+                        _skip_phase = True
+                        continue
+                    if chunk.startswith("\n\n▶ ["):
+                        _skip_phase = False
+                    if _phases_visible or not locals().get("_skip_phase", False):
+                        print(chunk, end="", flush=True)
+                # _last_turn aktualisieren
+                import time
+                _last_turn.update({
+                    "turn_id": f"{sid}-{int(time.time())}",
+                    "session_id": sid,
+                    "strategy_used": runner._reasoning_strategy_name,
+                })
                 print()
                 line = await status_line(runner)
                 if line:
