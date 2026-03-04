@@ -76,8 +76,8 @@ class DummyStrategy(ReasoningStrategy):
     async def plan_next_step(self, ctx, history) -> StepPlan:
         return StepPlan(next_action="respond")
 
-    async def reflect(self, ctx, history) -> Reflection:
-        return Reflection(step_useful=True, confidence=1.0)
+    async def reflect(self, ctx, history):
+        return Reflection(step_useful=True, confidence=1.0), ctx
 
     async def adapt(self, feedback: StrategyFeedback) -> None:
         pass
