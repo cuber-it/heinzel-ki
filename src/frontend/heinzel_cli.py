@@ -61,6 +61,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from frontend.reasoning_logger import ReasoningLoggerAddOn
+from core.models import HookPoint
 from core import (
     CompactionRegistry,
     HttpLLMProvider,
@@ -330,6 +332,15 @@ def build_runner(cfg: dict[str, Any]) -> Runner:
 
     # SessionManager mit Compaction
     runner.set_session_manager(build_session_manager(cfg))
+
+    # Reasoning-Logger AddOn (ausserhalb Core)
+    log_cfg = cfg.get("logging", {})
+    log_dir = Path(log_cfg.get("log_dir", "logs")) / "reasoning"
+    reasoning_addon = ReasoningLoggerAddOn(log_dir=log_dir)
+    runner.register_addon(
+        reasoning_addon,
+        hooks={HookPoint.ON_LLM_REQUEST, HookPoint.ON_LLM_RESPONSE},
+    )
 
     # Reasoning-Strategie
     strategy_name = reasoning_cfg.get("strategy", "passthrough")
