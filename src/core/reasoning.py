@@ -176,11 +176,12 @@ class ReasoningStrategy(ABC):
         self,
         ctx: PipelineContext,
         history: ContextHistory,
-    ) -> Reflection:
+    ) -> tuple[Reflection, PipelineContext]:
         """Nach jedem Schritt: war er nuetzlich?
 
-        Vergleicht typischerweise history.snapshots[-2] mit dem aktuellen
-        ctx via history.diff() um Fortschritt zu messen.
+        Gibt (Reflection, aktualisierter ctx) zurueck.
+        Strategien die ctx veraendern (z.B. DeepReasoningStrategy via Metadata)
+        muessen den neuen ctx zurueckgeben — Pipeline uebernimmt ihn.
         Reflection.insight fliesst in den naechsten plan_next_step() ein.
         Reflection.suggest_adaptation == True signalisiert adapt()-Bedarf.
         """
@@ -283,13 +284,13 @@ class PassthroughStrategy(ReasoningStrategy):
         self,
         ctx: PipelineContext,
         history: ContextHistory,
-    ) -> Reflection:
+    ) -> tuple[Reflection, PipelineContext]:
         """Kein Schritt zum Reflektieren — immer positiv."""
         return Reflection(
             step_useful=True,
             insight="",
             confidence=1.0,
-        )
+        ), ctx
 
     async def adapt(self, feedback: StrategyFeedback) -> None:
         """No-Op in HNZ-002."""
@@ -463,7 +464,7 @@ class ChainOfThoughtStrategy(ReasoningStrategy):
         self,
         ctx: PipelineContext,
         history: ContextHistory,
-    ) -> Reflection:
+    ) -> tuple[Reflection, PipelineContext]:
         """Nach Schritt 1: war der Denkschritt hilfreich?"""
         if ctx.loop_iteration == 0:
             useful = bool(ctx.response and len(ctx.response) > 50)
@@ -471,12 +472,12 @@ class ChainOfThoughtStrategy(ReasoningStrategy):
                 step_useful=useful,
                 insight=f"Denkschritt: {len(ctx.response or '')} Zeichen",
                 confidence=0.8 if useful else 0.4,
-            )
+            ), ctx
         return Reflection(
             step_useful=True,
             insight="Finale Antwort formuliert.",
             confidence=0.9,
-        )
+        ), ctx
 
     async def adapt(self, feedback: StrategyFeedback) -> None:
         pass  # HNZ-003+
@@ -752,7 +753,7 @@ class DeepReasoningStrategy(ReasoningStrategy):
         self,
         ctx: PipelineContext,
         history: ContextHistory,
-    ) -> Reflection:
+    ) -> tuple[Reflection, PipelineContext]:
         """Reasoning-Schritt bewerten und Trace akkumulieren."""
         m = self._meta(ctx)
         response = ctx.response or ""
@@ -796,7 +797,7 @@ class DeepReasoningStrategy(ReasoningStrategy):
             ),
             confidence=confidence,
             suggest_adaptation=not useful,
-        )
+        ), ctx
 
     async def adapt(self, feedback: StrategyFeedback) -> None:
         pass  # HNZ-003+: Lernschnittstelle
@@ -929,16 +930,15 @@ class ReActStrategy(ReasoningStrategy):
         self,
         ctx: PipelineContext,
         history: ContextHistory,
-    ) -> Reflection:
+    ) -> tuple[Reflection, PipelineContext]:
         """Nach jedem Schritt reflektieren."""
         steps = int(ctx.metadata.get("hnz_react_steps", 0)) + 1
-        ctx.metadata.get("hnz_tool_messages", [])
-        tool_count = len(ctx.metadata.get("hnz_tool_messages", [])) // 2  # je 2: use+result
+        tool_count = len(ctx.metadata.get("hnz_tool_messages", [])) // 2
         return Reflection(
             step_useful=True,
             insight=f"ReAct-Schritt {steps}: {tool_count} Tool-Calls ausgefuehrt.",
             confidence=0.9,
-        )
+        ), ctx
 
     async def on_tool_result(
         self,

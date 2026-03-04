@@ -170,8 +170,8 @@ async def assert_strategy_compliance(
     assert plan.next_action in ("think", "tool", "respond"), \
         f"next_action ungueltig: '{plan.next_action}'"
 
-    # reflect gibt Reflection zurueck mit gueltiger confidence
-    ref = await strategy.reflect(ctx, history)
+    # reflect gibt (Reflection, ctx) zurueck mit gueltiger confidence
+    ref, _ctx = await strategy.reflect(ctx, history)
     assert isinstance(ref, Reflection), \
         "reflect() muss Reflection zurueckgeben"
     assert 0.0 <= ref.confidence <= 1.0, \

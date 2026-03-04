@@ -239,7 +239,7 @@ async def run_pipeline(
                 continue   # naechster LLM-Call
 
             # Strategy reflektiert nach jedem LLM-Call (kein Tool-Call)
-            reflection = await strategy.reflect(ctx, ctx_history)
+            reflection, ctx = await strategy.reflect(ctx, ctx_history)
             ctx = ctx.evolve(reflection=reflection)
 
             # Zwei unabhaengige Loop-Kontrollen:

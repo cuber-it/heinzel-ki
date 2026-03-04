@@ -360,7 +360,7 @@ class Runner:
                 if halted:
                     return
 
-                reflection = await strategy.reflect(ctx, ctx_history)
+                reflection, ctx = await strategy.reflect(ctx, ctx_history)
                 ctx = ctx.evolve(reflection=reflection)
 
                 # Kognitive Ebene: Strategy entscheidet ob weiterer Schritt
@@ -420,7 +420,7 @@ class Runner:
                 self, HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
             )
 
-            reflection = await strategy.reflect(ctx, ctx_history)
+            reflection, ctx = await strategy.reflect(ctx, ctx_history)
             ctx = ctx.evolve(reflection=reflection)
 
             await run_post_phases(
