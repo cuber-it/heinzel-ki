@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from .models import AddOnResult, ContextHistory, HookPoint, PipelineContext
 from .session import Turn, WorkingMemory
-from ._provider_bridge import call_provider
+from ._provider_bridge import call_provider, build_tool_result_message
 
 if TYPE_CHECKING:
     from .runner import Runner
@@ -192,7 +192,53 @@ async def run_pipeline(
             if halted:
                 break
 
-            # Strategy reflektiert nach jedem LLM-Call
+            # Tool-Loop: wenn das LLM Tool-Calls angefordert hat
+            # ON_TOOL_REQUEST → MCPRouter fuehrt aus → ON_TOOL_RESULT → naechster LLM-Call
+            if ctx.tool_requests:
+                ctx, halted = await phase(
+                    heinzel, HookPoint.ON_TOOL_REQUEST, ctx, ctx_history
+                )
+                if halted:
+                    break
+
+                # Tool-Ergebnis-Message fuer die History aufbauen
+                if ctx.tool_results:
+                    tool_result_msg = build_tool_result_message(ctx.tool_results)
+                    existing_msgs = list(ctx.metadata.get("hnz_tool_messages", []))
+                    existing_msgs.append(tool_result_msg)
+                    ctx = ctx.evolve(
+                        metadata={**ctx.metadata, "hnz_tool_messages": existing_msgs},
+                        tool_requests=(),   # verarbeitet
+                    )
+
+                ctx, halted = await phase(
+                    heinzel, HookPoint.ON_TOOL_RESULT, ctx, ctx_history
+                )
+                if halted:
+                    break
+
+                # Strategy bewertet Tool-Ergebnis
+                if ctx.tool_results:
+                    for tool_result in ctx.tool_results:
+                        await strategy.on_tool_result(ctx, tool_result, ctx_history)
+
+                # Weiter im Loop — naechster LLM-Call mit Tool-Ergebnissen
+                iteration += 1
+                ctx = ctx.evolve(
+                    phase=HookPoint.ON_LOOP_ITERATION,
+                    loop_iteration=iteration,
+                    loop_done=False,
+                    tool_results=(),   # verarbeitet
+                )
+                ctx_history.push(ctx)
+                ctx, halted = await dispatch_and_apply(
+                    heinzel, HookPoint.ON_LOOP_ITERATION, ctx, ctx_history
+                )
+                if halted:
+                    break
+                continue   # naechster LLM-Call
+
+            # Strategy reflektiert nach jedem LLM-Call (kein Tool-Call)
             reflection = await strategy.reflect(ctx, ctx_history)
             ctx = ctx.evolve(reflection=reflection)
 

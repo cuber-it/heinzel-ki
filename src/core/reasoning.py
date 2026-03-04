@@ -498,7 +498,7 @@ class ChainOfThoughtStrategy(ReasoningStrategy):
         result: ToolResult,
         history: ContextHistory,
     ) -> ToolResultAssessment:
-        return ToolResultAssessment(status="sufficient")
+        return ToolResultAssessment(verdict="sufficient")
 
 
 StrategyRegistry.register(ChainOfThoughtStrategy())
@@ -819,7 +819,153 @@ class DeepReasoningStrategy(ReasoningStrategy):
         result: ToolResult,
         history: ContextHistory,
     ) -> ToolResultAssessment:
-        return ToolResultAssessment(status="sufficient")
+        return ToolResultAssessment(verdict="sufficient")
 
 
 StrategyRegistry.register(DeepReasoningStrategy())
+
+
+# ---------------------------------------------------------------------------
+# ReActStrategy — Reasoning + Acting
+# ---------------------------------------------------------------------------
+
+
+class ReActStrategy(ReasoningStrategy):
+    """ReAct: Reason → Act (Tool-Call) → Observe → Reason → ...
+
+    Das Kernmuster moderner LLM-Agents: Das Modell denkt,
+    entscheidet sich fuer ein Tool, bekommt das Ergebnis,
+    und denkt erneut — bis es antworten kann.
+
+    Nicht das Modell entscheidet ob Tools da sind — wir registrieren
+    Tool-Definitionen (Anthropic-Format) in ctx.metadata["hnz_tools"].
+    Der Provider schickt sie ans LLM. Das LLM gibt tool_use-Bloecke
+    zurueck. Die Pipeline fuehrt sie aus. Der Trace laeuft mit.
+
+    Konfiguration:
+        max_iterations : maximale Reasoning+Tool-Schritte (default 10)
+        tools          : Liste von Anthropic-Tool-Definitionen (kann leer sein)
+
+    Metadaten-Keys:
+        hnz_tools         : Tool-Definitionen (ans LLM geschickt)
+        hnz_tool_messages : akkumulierte tool_use/tool_result Messages
+        hnz_react_steps   : Anzahl bisheriger Schritte
+    """
+
+    def __init__(
+        self,
+        tools: list[dict] | None = None,
+        max_iterations: int = 10,
+    ) -> None:
+        self._tools = tools or []
+        self._max_iterations = max_iterations
+
+    @property
+    def name(self) -> str:
+        return "react"
+
+    @property
+    def version(self) -> str:
+        return "1.0.0"
+
+    @property
+    def description(self) -> str:
+        n = len(self._tools)
+        return (
+            f"ReAct: Reason+Act Loop (max {self._max_iterations} Schritte, "
+            f"{n} Tool{'s' if n != 1 else ''} registriert). "
+            "Modell denkt → Tool-Call → Ergebnis beobachten → weiterdenken."
+        )
+
+    async def initialize(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> PipelineContext:
+        """Tool-Definitionen und ReAct-Systemanweisung in ctx setzen."""
+        if not self._tools:
+            return ctx
+
+        system_addition = (
+            "\n\nDu hast Zugriff auf Tools. Nutze sie wenn noetig. "
+            "Denke vor jedem Tool-Call kurz nach warum du ihn brauchst. "
+            "Antworte erst wenn du genuegend Information hast."
+        )
+        return ctx.evolve(
+            metadata={
+                **ctx.metadata,
+                "hnz_tools": self._tools,
+                "hnz_tool_messages": [],
+                "hnz_react_steps": 0,
+            },
+            system_prompt=(ctx.system_prompt or "") + system_addition,
+        )
+
+    async def should_continue(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> bool:
+        """Weitermachen wenn noch Tool-Requests offen oder Budget nicht erschoepft."""
+        steps = ctx.metadata.get("hnz_react_steps", 0)
+        if steps >= self._max_iterations:
+            return False
+        # Tool-Calls laufen ueber ctx.loop_done (operative Ebene)
+        # Hier: kognitive Entscheidung nach einem normalen LLM-Call ohne Tools
+        return False  # kein weiterer Schritt — Antwort steht
+
+    async def plan_next_step(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> StepPlan:
+        """Naechsten Schritt planen — im ReAct immer direkt antworten/handeln."""
+        return StepPlan(
+            next_action="respond",
+            focus="Denke nach und handle wenn noetig.",
+        )
+
+    async def reflect(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> Reflection:
+        """Nach jedem Schritt reflektieren."""
+        steps = int(ctx.metadata.get("hnz_react_steps", 0)) + 1
+        ctx.metadata.get("hnz_tool_messages", [])
+        tool_count = len(ctx.metadata.get("hnz_tool_messages", [])) // 2  # je 2: use+result
+        return Reflection(
+            step_useful=True,
+            insight=f"ReAct-Schritt {steps}: {tool_count} Tool-Calls ausgefuehrt.",
+            confidence=0.9,
+        )
+
+    async def on_tool_result(
+        self,
+        ctx: PipelineContext,
+        result: ToolResult,
+        history: ContextHistory,
+    ) -> ToolResultAssessment:
+        """Tool-Ergebnis bewerten."""
+        if result.error:
+            return ToolResultAssessment(verdict="abort")
+        return ToolResultAssessment(verdict="sufficient")
+
+    async def adapt(self, feedback: StrategyFeedback) -> None:
+        pass
+
+    async def metrics(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> StrategyMetrics:
+        steps = int(ctx.metadata.get("hnz_react_steps", 0))
+        tool_count = len(ctx.metadata.get("hnz_tool_messages", [])) // 2
+        return StrategyMetrics(
+            iterations=steps,
+            tool_calls=tool_count,
+            confidence=0.9,
+        )
+
+
+StrategyRegistry.register(ReActStrategy())

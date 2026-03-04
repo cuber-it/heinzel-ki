@@ -3,6 +3,7 @@
 from .reasoning import (
     ChainOfThoughtStrategy,
     DeepReasoningStrategy,
+    ReActStrategy,
     PassthroughStrategy,
     ReasoningStrategy,
     StrategyFeedback,
@@ -56,6 +57,7 @@ __all__ = [
     # Compaction
     "ChainOfThoughtStrategy",
     "DeepReasoningStrategy",
+    "ReActStrategy",
     "CompactionRegistry",
     "CompactionStrategy",
     "NoopRollingSessionPolicy",

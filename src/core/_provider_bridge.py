@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from .exceptions import ContextLengthExceededError
 from .models import HookPoint, PipelineContext
+from .models.base import ToolCall, ToolResult
 
 if TYPE_CHECKING:
     from .runner import Runner
@@ -24,16 +25,61 @@ def build_messages_from_ctx(ctx: PipelineContext) -> list[dict[str, Any]]:
     """Messages aus Context bauen.
 
     Aufbau: [Working Memory History...] + [aktuelle User-Message]
+    Fuer tool_use/tool_result: strukturierte content_blocks einbetten.
 
     ctx.messages enthaelt Working Memory (prepended in ON_MEMORY_QUERY).
-    Der aktuelle User-Input kommt immer als letzte Message dazu,
-    damit das Modell weiss worauf es antworten soll.
+    ctx.metadata["hnz_tool_messages"] enthaelt tool_use + tool_result Bloecke
+    aus dem laufenden ReAct-Loop — werden zwischen User-Message und aktuellem
+    Prompt eingefuegt.
     """
     current = {"role": "user", "content": ctx.parsed_input or ctx.raw_input}
-    if ctx.messages:
-        history = [{"role": m.role, "content": m.content} for m in ctx.messages]
-        return history + [current]
-    return [current]
+    history = [{"role": m.role, "content": m.content} for m in ctx.messages] if ctx.messages else []
+
+    # Tool-Messages aus dem ReAct-Loop einbauen (tool_use + tool_result Paare)
+    tool_messages: list[dict] = ctx.metadata.get("hnz_tool_messages", [])
+
+    if tool_messages:
+        return history + [current] + tool_messages
+    return history + [current]
+
+
+def _parse_tool_calls(content_blocks: list[dict[str, Any]]) -> list[ToolCall]:
+    """Extrahiert ToolCall-Objekte aus Anthropic content_blocks.
+
+    Erkennt Bloecke mit type=='tool_use' und baut ToolCall-Objekte daraus.
+    """
+    calls = []
+    for block in content_blocks:
+        if block.get("type") == "tool_use":
+            calls.append(ToolCall(
+                call_id=block.get("id", ""),
+                tool_name=block.get("name", ""),
+                args=block.get("input", {}),
+            ))
+    return calls
+
+
+def build_tool_use_message(content_blocks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Baut eine assistant-Message mit tool_use-Bloecken fuer die History."""
+    return {"role": "assistant", "content": content_blocks}
+
+
+def build_tool_result_message(tool_results: tuple) -> dict[str, Any]:
+    """Baut eine user-Message mit tool_result-Bloecken fuer die History."""
+    blocks = []
+    for result in tool_results:
+        block: dict[str, Any] = {
+            "type": "tool_result",
+            "tool_use_id": result.call_id,
+        }
+        if result.error:
+            block["content"] = f"[Fehler: {result.error}]"
+            block["is_error"] = True
+        else:
+            content = result.result
+            block["content"] = str(content) if not isinstance(content, str) else content
+        blocks.append(block)
+    return {"role": "user", "content": blocks}
 
 
 async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContext:
@@ -46,13 +92,23 @@ async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContex
     Ein pending Provider wird nach dem Call aktiviert.
     """
     messages = build_messages_from_ctx(ctx)
+    tools: list[dict[str, Any]] | None = ctx.metadata.get("hnz_tools") or None
     heinzel._in_turn = True
+    content_blocks: list[dict[str, Any]] = []
     try:
-        response = await heinzel._provider.chat(
-            messages=messages,
-            system_prompt=ctx.system_prompt,
-            model=ctx.model,
-        )
+        if tools:
+            response, content_blocks = await heinzel._provider.chat_tools(
+                messages=messages,
+                system_prompt=ctx.system_prompt,
+                model=ctx.model,
+                tools=tools,
+            )
+        else:
+            response = await heinzel._provider.chat(
+                messages=messages,
+                system_prompt=ctx.system_prompt,
+                model=ctx.model,
+            )
     except ContextLengthExceededError as exc:
         # Lazy-Discovery: Limit merken, compact, einmal Retry
         logger.warning(
@@ -85,9 +141,21 @@ async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContex
             heinzel._pending_provider = None
             logger.info("set_provider: pending Provider aktiviert nach Turn-Ende")
 
+    # Tool-Calls aus content_blocks extrahieren
+    tool_calls = _parse_tool_calls(content_blocks)
+
+    # tool_use-Blöcke für die Message-History merken (ReAct-Loop)
+    new_meta = dict(ctx.metadata)
+    if content_blocks and tool_calls:
+        existing = list(ctx.metadata.get("hnz_tool_messages", []))
+        existing.append(build_tool_use_message(content_blocks))
+        new_meta["hnz_tool_messages"] = existing
+
     return ctx.evolve(
         phase=HookPoint.ON_LLM_RESPONSE,
         response=response,
         stream_buffer=response,
-        loop_done=True,   # Fallback: Loop endet nach erstem Turn
+        tool_requests=tuple(tool_calls),
+        loop_done=not bool(tool_calls),   # Tool-Calls? Loop läuft weiter.
+        metadata=new_meta,
     )

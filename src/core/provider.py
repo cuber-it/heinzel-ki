@@ -42,6 +42,24 @@ class LLMProvider(ABC):
     ) -> str:
         """Einfacher Chat-Call. Gibt den Response-Text zurueck."""
 
+    async def chat_tools(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str = "",
+        model: str = "",
+        tools: list[dict[str, Any]] | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Chat mit Tool-Definitionen. Gibt (text, content_blocks) zurueck.
+
+        content_blocks koennen tool_use-Bloecke enthalten wenn das LLM
+        einen Tool-Call ausgibt.
+
+        Default-Implementierung: ruft chat() auf, gibt leere Bloecke zurueck.
+        HttpLLMProvider ueberschreibt mit echter Tool-Unterstuetzung.
+        """
+        text = await self.chat(messages=messages, system_prompt=system_prompt, model=model)
+        return text, []
+
     @abstractmethod
     async def stream(
         self,
@@ -179,6 +197,47 @@ class HttpLLMProvider(LLMProvider):
         except Exception as exc:
             raise ProviderError(
                 f"chat fehlgeschlagen: {self._name}",
+                detail=str(exc),
+            ) from exc
+
+    async def chat_tools(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str = "",
+        model: str = "",
+        tools: list[dict[str, Any]] | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Chat mit Tool-Definitionen gegen /chat.
+
+        Schickt tools im Payload. Gibt (text, content_blocks) zurueck.
+        content_blocks koennen tool_use-Bloecke enthalten.
+        """
+        payload: dict[str, Any] = {"messages": messages}
+        if system_prompt:
+            payload["system"] = system_prompt
+        effective_model = model or self._model
+        if effective_model:
+            payload["model"] = effective_model
+        if tools:
+            payload["tools"] = tools
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(f"{self._base_url}/chat", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                text = data.get("content", "")
+                content_blocks = data.get("content_blocks", []) or []
+                return text, content_blocks
+        except httpx.HTTPStatusError as exc:
+            raise ProviderError(
+                f"chat_tools fehlgeschlagen: {self._name}",
+                status_code=exc.response.status_code,
+                detail=str(exc),
+            ) from exc
+        except Exception as exc:
+            raise ProviderError(
+                f"chat_tools fehlgeschlagen: {self._name}",
                 detail=str(exc),
             ) from exc
 
