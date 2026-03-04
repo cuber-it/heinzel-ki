@@ -324,15 +324,34 @@ class Runner:
                     # Finaler Schritt — streamen und Loop beenden
                     break
 
-                # Reasoning-Schritt: non-streaming LLM-Call
+                # Reasoning-Schritt: live streamen mit Phase-Header
+                phase_name = ctx.metadata.get("hnz_rt_phase", plan.next_action)
                 logger.debug(
                     "chat_stream: Reasoning-Schritt '%s' (iter %d)",
-                    plan.next_action, ctx.loop_iteration,
+                    phase_name, ctx.loop_iteration,
                 )
-                # Progress-Indikator: User sieht dass etwas passiert
-                phase_name = ctx.metadata.get("hnz_rt_phase", plan.next_action)
-                yield f"\n[⟳ {phase_name} ...]\n"
-                ctx = await call_provider(self, ctx)
+                yield f"\n\n▶ [{phase_name.upper()}]\n"
+                step_buffer = ""
+                try:
+                    async for chunk in self._provider.stream(
+                        messages=build_messages_from_ctx(ctx),
+                        system_prompt=ctx.system_prompt,
+                        model=ctx.model,
+                    ):
+                        step_buffer += chunk
+                        yield chunk
+                except Exception as exc:
+                    logger.error("Reasoning-Stream-Fehler: %s", exc, exc_info=True)
+                    step_buffer = f"[Fehler: {exc}]"
+                    yield step_buffer
+
+                yield "\n"
+                ctx = ctx.evolve(
+                    phase=HookPoint.ON_LLM_RESPONSE,
+                    response=step_buffer,
+                    stream_buffer=step_buffer,
+                    loop_done=True,
+                )
                 ctx_history.push(ctx)
 
                 ctx, halted = await dispatch_and_apply(
@@ -371,7 +390,10 @@ class Runner:
                 if halted:
                     return
 
-            # Finaler Schritt: streamen
+            # Finaler Schritt: streamen (mit Header wenn Reasoning aktiv war)
+            final_phase = ctx.metadata.get("hnz_rt_phase", "")
+            if final_phase:
+                yield f"\n\n▶ [ANTWORT]\n"
             stream_buffer = ""
             try:
                 async for chunk in self._provider.stream(
