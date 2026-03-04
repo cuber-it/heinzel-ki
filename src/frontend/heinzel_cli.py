@@ -78,6 +78,7 @@ from core import (
     TruncationCompactionStrategy,
     find_config_file,
 )
+from core.feedback_store import FeedbackEvent, SqliteFeedbackStore
 
 
 # =============================================================================
@@ -266,8 +267,7 @@ async def handle_selector_stats() -> None:
                   f"({s['total']} Bewertungen, {s['with_comment']} mit Kommentar)")
     else:
         print("  (noch keine Bewertungen)")
-    print("--- Ende ---
-")
+    print("--- Ende ---\n")
 
 
 # =============================================================================
