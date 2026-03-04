@@ -377,3 +377,128 @@ class StrategyRegistry:
 # ---------------------------------------------------------------------------
 
 StrategyRegistry.register(PassthroughStrategy())
+
+
+# ---------------------------------------------------------------------------
+# ChainOfThoughtStrategy — Denken vor Antworten
+# ---------------------------------------------------------------------------
+
+
+class ChainOfThoughtStrategy(ReasoningStrategy):
+    """Zwei-Schritt-Strategie: erst denken, dann antworten.
+
+    Schritt 1 (think): LLM wird gebeten laut zu denken — Analyse,
+    Überlegungen, Zwischenschritte. Antwort landet in ctx.response.
+
+    Schritt 2 (respond): LLM bekommt den Denkschritt als Kontext
+    und formuliert die finale Antwort.
+
+    Sichtbar unterschiedlich von Passthrough: zwei LLM-Calls pro Turn.
+    Geeignet für komplexe Fragen, Planung, Erklärungen.
+    """
+
+    @property
+    def name(self) -> str:
+        return "chain_of_thought"
+
+    @property
+    def version(self) -> str:
+        return "1.0.0"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Zwei LLM-Calls pro Turn: erst denken, dann antworten. "
+            "Geeignet fuer komplexe Fragen, Planung, schrittweise Erklaerungen."
+        )
+
+    async def initialize(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> PipelineContext:
+        """Kein Setup noetig — Schritt-Steuerung via loop_iteration."""
+        return ctx
+
+    async def should_continue(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> bool:
+        """Weitermachen nach Schritt 1 (think) — stoppen nach Schritt 2 (respond)."""
+        return ctx.loop_iteration == 0
+
+    async def plan_next_step(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> StepPlan:
+        """Iteration 0 → denken, Iteration 1 → antworten."""
+        if ctx.loop_iteration == 0:
+            return StepPlan(
+                next_action="think",
+                focus="Analysiere die Anfrage sorgfaeltig. Denke laut: "
+                      "Was wird gefragt? Welche Schritte sind noetig? "
+                      "Welche Annahmen machst du?",
+                prompt_addition=(
+                    "\n\n[DENK-SCHRITT] Analysiere die Anfrage zuerst gruendlich "
+                    "und denke laut. Zeige deinen Denkprozess vollstaendig. "
+                    "Fasse am Ende deine Kernerkenntnisse zusammen."
+                ),
+            )
+        # Iteration 1: bisherigen Denkschritt als Kontext nutzen
+        thinking = ctx.response or ""
+        return StepPlan(
+            next_action="respond",
+            focus="Formuliere die finale Antwort basierend auf dem Denkschritt.",
+            prompt_addition=(
+                f"\n\n[DENKSCHRITT-ERGEBNIS]\n{thinking}\n\n"
+                "[AUFGABE] Formuliere jetzt die finale, praezise Antwort "
+                "basierend auf diesem Denkschritt. Kein Denken mehr — "
+                "direkte, klare Antwort."
+            ),
+        )
+
+    async def reflect(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> Reflection:
+        """Nach Schritt 1: war der Denkschritt hilfreich?"""
+        if ctx.loop_iteration == 0:
+            useful = bool(ctx.response and len(ctx.response) > 50)
+            return Reflection(
+                step_useful=useful,
+                insight=f"Denkschritt: {len(ctx.response or '')} Zeichen",
+                confidence=0.8 if useful else 0.4,
+            )
+        return Reflection(
+            step_useful=True,
+            insight="Finale Antwort formuliert.",
+            confidence=0.9,
+        )
+
+    async def adapt(self, feedback: StrategyFeedback) -> None:
+        pass  # HNZ-003+
+
+    async def metrics(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> StrategyMetrics:
+        return StrategyMetrics(
+            iterations=ctx.loop_iteration + 1,
+            tool_calls=0,
+            confidence=0.85,
+        )
+
+    async def on_tool_result(
+        self,
+        ctx: PipelineContext,
+        result: ToolResult,
+        history: ContextHistory,
+    ) -> ToolResultAssessment:
+        return ToolResultAssessment(status="sufficient")
+
+
+StrategyRegistry.register(ChainOfThoughtStrategy())

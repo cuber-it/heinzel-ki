@@ -1,6 +1,7 @@
 """heinzel_core — Kern des Heinzel-Systems."""
 
 from .reasoning import (
+    ChainOfThoughtStrategy,
     PassthroughStrategy,
     ReasoningStrategy,
     StrategyFeedback,
@@ -52,6 +53,7 @@ from .session_noop import NoopMemoryGate, NoopSessionManager, NoopWorkingMemory
 
 __all__ = [
     # Compaction
+    "ChainOfThoughtStrategy",
     "CompactionRegistry",
     "CompactionStrategy",
     "NoopRollingSessionPolicy",

@@ -361,7 +361,7 @@ def load_config(config_path: str | None, provider_override: str | None) -> dict[
             "roll_threshold": 0.95,
             "compaction_strategy": "summarizing",
         },
-        "reasoning": {"strategy": "passthrough"},
+        "reasoning": {"strategy": "chain_of_thought"},
         "logging": {"log_dir": "./logs", "log_addons": False},
     }
 
