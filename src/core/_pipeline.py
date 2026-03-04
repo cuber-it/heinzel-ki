@@ -196,12 +196,25 @@ async def run_pipeline(
             reflection = await strategy.reflect(ctx, ctx_history)
             ctx = ctx.evolve(reflection=reflection)
 
-            # Loop-Kontrolle: Strategy entscheidet, ctx.loop_done als Fallback
-            # Loop-Kontrolle vollstaendig ueber Strategy:
-            # PassthroughStrategy delegiert an ctx.loop_done,
-            # komplexe Strategien (HNZ-003+) entscheiden selbst.
-            if not await strategy.should_continue(ctx, ctx_history):
+            # Zwei unabhaengige Loop-Kontrollen:
+            #
+            # Operative Ebene (ctx.loop_done): Provider setzt True als Default.
+            # Ein LoopControl-AddOn kann auf False setzen um den Loop fortzusetzen.
+            # Diese Ebene entscheidet allein — kein Strategy-Check danach.
+            #
+            # Kognitive Ebene (strategy.should_continue): Greift nur wenn
+            # loop_done=True (kein AddOn hat den Loop offen gehalten).
+            # Erlaubt Strategien (ReAct, ChainOfThought) einen eigenen
+            # Denkloop unabhaengig vom operativen Loop zu steuern.
+            if not ctx.loop_done:
+                # AddOn haelt Loop explizit offen — operative Ebene entscheidet.
+                pass
+            elif not await strategy.should_continue(ctx, ctx_history):
+                # loop_done=True und Strategy will keinen weiteren Schritt.
                 break
+            else:
+                # loop_done=True aber Strategy will weitermachen (Reasoning-Loop).
+                ctx = ctx.evolve(loop_done=False)
 
             iteration += 1
             ctx = ctx.evolve(

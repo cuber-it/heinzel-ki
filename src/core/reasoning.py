@@ -264,14 +264,12 @@ class PassthroughStrategy(ReasoningStrategy):
         ctx: PipelineContext,
         history: ContextHistory,
     ) -> bool:
-        """Delegiert an ctx.loop_done — kein eigener Loop-State.
+        """Kein Reasoning-Loop — immer False.
 
-        PassthroughStrategy steuert keinen Reasoning-Loop selbst.
-        Sie respektiert was AddOns via ctx.loop_done signalisieren:
-          - loop_done=True  (Default aus _provider_bridge) → stoppen
-          - loop_done=False (LoopControl-AddOn) → weiterlaufen lassen
+        Die operative Ebene (ctx.loop_done via Provider/AddOn) ist davon
+        unabhaengig und wird in der Pipeline separat geprueft.
         """
-        return not ctx.loop_done
+        return False
 
     async def plan_next_step(
         self,

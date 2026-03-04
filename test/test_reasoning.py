@@ -210,18 +210,16 @@ class TestPassthroughStrategy:
         assert strategy.description  # nicht leer
 
     @pytest.mark.asyncio
-    async def test_passthrough_should_continue_delegates_loop_done(  # noqa: E501
+    async def test_passthrough_should_continue_is_false(  # noqa: E501
         self, strategy, ctx, history
     ):
-        """PassthroughStrategy delegiert an ctx.loop_done."""
-        # Default: loop_done=False → should_continue=True
-        result = await strategy.should_continue(ctx, history)
-        assert result is True  # ctx.loop_done defaults to False
+        """PassthroughStrategy: kein Reasoning-Loop, immer False.
 
-        # Mit loop_done=True (Provider-Default nach LLM-Call)
-        ctx_done = ctx.evolve(loop_done=True)
-        result_done = await strategy.should_continue(ctx_done, history)
-        assert result_done is False
+        ctx.loop_done ist operative Ebene — wird in der Pipeline
+        separat geprueft, nicht von der Strategy.
+        """
+        assert await strategy.should_continue(ctx, history) is False
+        assert await strategy.should_continue(ctx.evolve(loop_done=True), history) is False
 
     @pytest.mark.asyncio
     async def test_passthrough_plan_next_step_returns_respond(  # noqa: E501
