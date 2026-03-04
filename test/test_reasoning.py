@@ -233,7 +233,7 @@ class TestPassthroughStrategy:
     async def test_passthrough_reflect_returns_useful(  # noqa: E501
         self, strategy, ctx, history
     ):
-        ref = await strategy.reflect(ctx, history)
+        ref, _ctx = await strategy.reflect(ctx, history)
         assert isinstance(ref, Reflection)
         assert ref.step_useful is True
         assert ref.confidence == 1.0
