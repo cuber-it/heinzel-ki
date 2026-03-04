@@ -160,8 +160,25 @@ async def run_pipeline(
     )
 
     if not halted:
+        strategy = heinzel.reasoning_strategy
+
+        # Strategy initialisieren — darf ctx anreichern (z.B. Ziele setzen)
+        ctx_before = ctx
+        ctx = await strategy.initialize(ctx, ctx_history)
+        if ctx.snapshot_id != ctx_before.snapshot_id:
+            ctx_history.push(ctx)
+
         iteration = 0
         while True:
+            # Strategy plant naechsten Schritt
+            plan = await strategy.plan_next_step(ctx, ctx_history)
+            ctx = ctx.evolve(step_plan=plan)
+            if plan.prompt_addition:
+                ctx = ctx.evolve(
+                    system_prompt=(ctx.system_prompt or "")
+                    + "\n" + plan.prompt_addition
+                )
+
             ctx, halted = await phase(heinzel, HookPoint.ON_LLM_REQUEST, ctx, ctx_history)
             if halted:
                 break
@@ -175,7 +192,15 @@ async def run_pipeline(
             if halted:
                 break
 
-            if ctx.loop_done:
+            # Strategy reflektiert nach jedem LLM-Call
+            reflection = await strategy.reflect(ctx, ctx_history)
+            ctx = ctx.evolve(reflection=reflection)
+
+            # Loop-Kontrolle: Strategy entscheidet, ctx.loop_done als Fallback
+            # Loop-Kontrolle vollstaendig ueber Strategy:
+            # PassthroughStrategy delegiert an ctx.loop_done,
+            # komplexe Strategien (HNZ-003+) entscheiden selbst.
+            if not await strategy.should_continue(ctx, ctx_history):
                 break
 
             iteration += 1

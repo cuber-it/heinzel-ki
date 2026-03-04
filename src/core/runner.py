@@ -291,6 +291,21 @@ class Runner:
             if halted:
                 return
 
+            strategy = self.reasoning_strategy
+
+            # Strategy initialisieren
+            ctx = await strategy.initialize(ctx, ctx_history)
+            ctx_history.push(ctx)
+
+            # Strategy plant Schritt (bei PassthroughStrategy: respond, kein Loop)
+            plan = await strategy.plan_next_step(ctx, ctx_history)
+            ctx = ctx.evolve(step_plan=plan)
+            if plan.prompt_addition:
+                ctx = ctx.evolve(
+                    system_prompt=(ctx.system_prompt or "")
+                    + "\n" + plan.prompt_addition
+                )
+
             ctx, halted = await phase(self, HookPoint.ON_LLM_REQUEST, ctx, ctx_history)
             if halted:
                 return
@@ -321,6 +336,11 @@ class Runner:
             ctx, _ = await dispatch_and_apply(
                 self, HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
             )
+
+            # Strategy reflektiert
+            reflection = await strategy.reflect(ctx, ctx_history)
+            ctx = ctx.evolve(reflection=reflection)
+
             await run_post_phases(
                 self, ctx, ctx_history, sid, message, stream_buffer, working_memory
             )
