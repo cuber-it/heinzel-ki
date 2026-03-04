@@ -502,3 +502,324 @@ class ChainOfThoughtStrategy(ReasoningStrategy):
 
 
 StrategyRegistry.register(ChainOfThoughtStrategy())
+
+
+# ---------------------------------------------------------------------------
+# DeepReasoningStrategy — Iterativer Reasoning-Loop mit Selbstkritik
+# ---------------------------------------------------------------------------
+
+
+class DeepReasoningStrategy(ReasoningStrategy):
+    """Iterativer Reasoning-Loop modelliert nach o1/Extended-Thinking-Ansatz.
+
+    Wie moderne LLMs intern arbeiten:
+      1. Problem-Dekomposition  — Was genau wird gefragt? Welche Dimensionen?
+      2. Exploration            — Loesungsraum erkunden, Ansaetze abwaegen
+      3. Reasoning (iterativ)   — Durcharbeiten mit akkumuliertem Trace
+      4. Selbstkritik           — Eigenes Reasoning pruefen, Luecken finden
+      5. Synthese               — Saubere finale Antwort auf Basis des Traces
+
+    Kernprinzipien:
+      - Zustandslos: Trace laeuft ueber ctx.metadata["hnz_rt_*"]
+      - Konfidenz-basierter Fruehstop: bei Schwelle vor max_iterations
+      - Jeder Schritt sieht den gesamten bisherigen Trace
+      - Selbstkritik ist Pflicht vor der Antwort
+
+    Konfiguration (im Konstruktor oder via Subklasse):
+      max_iterations      : maximale Reasoning-Schritte vor Antwort (default 4)
+      confidence_threshold: Fruehstop wenn Konfidenz >= Wert (default 0.85)
+
+    Metadaten-Keys in ctx.metadata:
+      hnz_rt_trace        : akkumulierter Reasoning-Text
+      hnz_rt_phase        : aktuelle Phase (decompose/explore/reason/critique/synthesize)
+      hnz_rt_confidence   : Konfidenz 0.0-1.0 nach letzter Reflexion
+      hnz_rt_budget_used  : verbrauchte Reasoning-Schritte
+    """
+
+    _PHASES = ["decompose", "explore", "reason", "critique", "synthesize"]
+
+    _PHASE_PROMPTS = {
+        "decompose": (
+            "\n\n[REASONING: PROBLEM-ANALYSE]\n"
+            "Analysiere diese Anfrage grundlich bevor du antwortest:\n"
+            "- Was genau wird gefragt? Was ist der Kern der Anfrage?\n"
+            "- Welche Teilprobleme stecken darin?\n"
+            "- Welche Annahmen werden gemacht? Welche sind moeglicherweise falsch?\n"
+            "- Was ist der Kontext? Was fehlt noch?\n"
+            "Denke laut und vollstaendig. Kein voreiliges Antworten."
+        ),
+        "explore": (
+            "\n\n[REASONING: LOESUNGSRAUM]\n"
+            "Bisheriger Reasoning-Trace:\n{trace}\n\n"
+            "Erkunde jetzt den Loesungsraum:\n"
+            "- Welche Ansaetze gibt es? Liste alle sinnvollen auf.\n"
+            "- Was spricht fuer/gegen jeden Ansatz?\n"
+            "- Welcher Ansatz ist am vielversprechendsten — und warum?\n"
+            "- Welche Risiken oder Fallstricke gibt es?\n"
+            "Sei gruendlich. Schreibe deinen Denkprozess vollstaendig auf."
+        ),
+        "reason": (
+            "\n\n[REASONING: DURCHARBEITEN — Schritt {step}]\n"
+            "Bisheriger Reasoning-Trace:\n{trace}\n\n"
+            "Arbeite jetzt den vielversprechendsten Ansatz durch:\n"
+            "- Vertiefe die Analyse wo noetig.\n"
+            "- Loesung Schritt fuer Schritt entwickeln.\n"
+            "- Auf Luecken oder Widerspruche im bisherigen Reasoning achten.\n"
+            "- Neue Erkenntnisse explizit benennen.\n"
+            "Schreibe jeden Schritt deines Denkens auf."
+        ),
+        "critique": (
+            "\n\n[REASONING: SELBSTKRITIK]\n"
+            "Bisheriger Reasoning-Trace:\n{trace}\n\n"
+            "Pruefe dein bisheriges Reasoning kritisch:\n"
+            "- Wo koennte das Reasoning fehlerhaft oder unvollstaendig sein?\n"
+            "- Welche Gegenargumente oder Randfaelle wurden ignoriert?\n"
+            "- Ist die Schlussfolgerung wirklich gut begruendet?\n"
+            "- Was wuerde ein kritischer Experte bemaengeln?\n"
+            "Sei ehrlich und streng. Gib am Ende eine Konfidenz 0-100 an."
+        ),
+        "synthesize": (
+            "\n\n[REASONING: FINALE SYNTHESE]\n"
+            "Vollstaendiger Reasoning-Trace:\n{trace}\n\n"
+            "Formuliere jetzt die finale Antwort:\n"
+            "- Basiere dich vollstaendig auf dem Reasoning-Trace.\n"
+            "- Klar, praezise, vollstaendig — kein weiteres Denken mehr.\n"
+            "- Erkenne Unsicherheiten explizit an wo sie bestehen.\n"
+            "- Antworte direkt auf die urspruengliche Frage."
+        ),
+    }
+
+    def __init__(
+        self,
+        max_iterations: int = 4,
+        confidence_threshold: float = 0.85,
+    ) -> None:
+        self._max_iterations = max_iterations
+        self._confidence_threshold = confidence_threshold
+
+    @property
+    def name(self) -> str:
+        return "deep_reasoning"
+
+    @property
+    def version(self) -> str:
+        return "1.0.0"
+
+    @property
+    def description(self) -> str:
+        return (
+            f"Iterativer Reasoning-Loop (max {self._max_iterations} Schritte, "
+            f"Konfidenz-Schwelle {self._confidence_threshold:.0%}). "
+            "Problem-Analyse → Exploration → Reasoning → Selbstkritik → Synthese. "
+            "Modelliert nach o1/Extended-Thinking-Ansatz."
+        )
+
+    # ------------------------------------------------------------------
+    # Hilfsmethoden
+    # ------------------------------------------------------------------
+
+    def _meta(self, ctx: PipelineContext) -> dict:
+        """Reasoning-Metadaten aus ctx.metadata holen (nie None)."""
+        return {
+            "trace": ctx.metadata.get("hnz_rt_trace", ""),
+            "phase": ctx.metadata.get("hnz_rt_phase", "decompose"),
+            "confidence": float(ctx.metadata.get("hnz_rt_confidence", 0.0)),
+            "budget_used": int(ctx.metadata.get("hnz_rt_budget_used", 0)),
+        }
+
+    def _update_meta(
+        self,
+        ctx: PipelineContext,
+        trace: str | None = None,
+        phase: str | None = None,
+        confidence: float | None = None,
+        budget_used: int | None = None,
+    ) -> PipelineContext:
+        """ctx.metadata mit neuen Reasoning-Werten aktualisieren."""
+        m = self._meta(ctx)
+        new_meta = {
+            **ctx.metadata,
+            "hnz_rt_trace": trace if trace is not None else m["trace"],
+            "hnz_rt_phase": phase if phase is not None else m["phase"],
+            "hnz_rt_confidence": confidence if confidence is not None else m["confidence"],
+            "hnz_rt_budget_used": budget_used if budget_used is not None else m["budget_used"],
+        }
+        return ctx.evolve(metadata=new_meta)
+
+    def _phase_for_iteration(self, iteration: int) -> str:
+        """Welche Phase entspricht der aktuellen Iteration?"""
+        if iteration == 0:
+            return "decompose"
+        if iteration == 1:
+            return "explore"
+        # Letzte Iteration vor max: Selbstkritik
+        if iteration >= self._max_iterations - 1:
+            return "critique"
+        return "reason"
+
+    def _extract_confidence(self, response: str) -> float:
+        """Konfidenz aus Selbstkritik-Antwort extrahieren (heuristisch)."""
+        import re
+        # Suche nach "Konfidenz: 85" oder "confidence: 0.85" oder "85%" etc.
+        patterns = [
+            r"konfidenz[:\s]+(\d+(?:\.\d+)?)\s*%?",
+            r"confidence[:\s]+(\d+(?:\.\d+)?)\s*%?",
+            r"(\d{2,3})\s*%\s*(?:konfidenz|confidence|sicher)",
+            r"(?:konfidenz|confidence)[^0-9]*(\d+(?:\.\d+)?)",
+        ]
+        for pat in patterns:
+            m = re.search(pat, response.lower())
+            if m:
+                val = float(m.group(1))
+                return min(val / 100.0, 1.0) if val > 1.0 else val
+        # Fallback: Antwortlaenge als grober Indikator
+        length = len(response)
+        if length > 800:
+            return 0.75
+        if length > 400:
+            return 0.6
+        return 0.45
+
+    # ------------------------------------------------------------------
+    # ReasoningStrategy Interface
+    # ------------------------------------------------------------------
+
+    async def initialize(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> PipelineContext:
+        """Reasoning-Metadaten initialisieren."""
+        return self._update_meta(
+            ctx,
+            trace="",
+            phase="decompose",
+            confidence=0.0,
+            budget_used=0,
+        )
+
+    async def should_continue(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> bool:
+        """Weitermachen wenn Budget nicht erschoepft und Konfidenz unter Schwelle."""
+        m = self._meta(ctx)
+        # Synthese ist immer der letzte Schritt — danach stoppen
+        if m["phase"] == "synthesize":
+            return False
+        # Budget erschoepft — erzwinge Synthese im naechsten Schritt
+        if m["budget_used"] >= self._max_iterations:
+            return True  # noch ein Schritt: Synthese
+        # Fruehstop: genuegend Konfidenz nach Selbstkritik
+        if m["phase"] == "critique" and m["confidence"] >= self._confidence_threshold:
+            return True  # noch ein Schritt: Synthese
+        return True
+
+    async def plan_next_step(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> StepPlan:
+        """Naechste Phase bestimmen und Prompt aufbauen."""
+        m = self._meta(ctx)
+        budget = m["budget_used"]
+        phase = m["phase"]
+        trace = m["trace"]
+
+        # Nach Critique mit hoher Konfidenz oder Budget erschoepft: Synthese
+        if phase == "critique" or budget >= self._max_iterations:
+            prompt = self._PHASE_PROMPTS["synthesize"].format(trace=trace)
+            return StepPlan(
+                next_action="respond",
+                focus="Finale Antwort auf Basis des vollstaendigen Reasoning-Traces.",
+                prompt_addition=prompt,
+            )
+
+        # Naechste Phase bestimmen
+        next_phase = self._phase_for_iteration(budget)
+        step = max(0, budget - 1)  # fuer "reason"-Nummerierung
+        prompt_template = self._PHASE_PROMPTS.get(next_phase, self._PHASE_PROMPTS["reason"])
+        prompt = prompt_template.format(trace=trace, step=step)
+
+        return StepPlan(
+            next_action="think",
+            focus=f"Reasoning-Phase: {next_phase} (Schritt {budget + 1}/{self._max_iterations})",
+            prompt_addition=prompt,
+        )
+
+    async def reflect(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> Reflection:
+        """Reasoning-Schritt bewerten und Trace akkumulieren."""
+        m = self._meta(ctx)
+        response = ctx.response or ""
+        phase = m["phase"]
+        budget = m["budget_used"]
+
+        # Trace akkumulieren
+        phase_header = f"\n{'='*40}\n[{phase.upper()} — Schritt {budget + 1}]\n{'='*40}\n"
+        new_trace = m["trace"] + phase_header + response
+
+        # Konfidenz: aus Selbstkritik extrahieren, sonst schrittweise aufbauen
+        if phase == "critique":
+            confidence = self._extract_confidence(response)
+        else:
+            # Konfidenz steigt mit Budget-Verbrauch
+            confidence = min(0.4 + (budget * 0.15), 0.82)
+
+        # Naechste Phase bestimmen
+        next_budget = budget + 1
+        if phase == "critique" or next_budget >= self._max_iterations:
+            next_phase = "synthesize"
+        else:
+            next_phase = self._phase_for_iteration(next_budget)
+
+        ctx = self._update_meta(
+            ctx,
+            trace=new_trace,
+            phase=next_phase,
+            confidence=confidence,
+            budget_used=next_budget,
+        )
+
+        useful = len(response) > 100
+        return Reflection(
+            step_useful=useful,
+            insight=(
+                f"Phase '{phase}' abgeschlossen. "
+                f"Trace: {len(new_trace)} Zeichen. "
+                f"Konfidenz: {confidence:.0%}. "
+                f"Naechste Phase: {next_phase}."
+            ),
+            confidence=confidence,
+            suggest_adaptation=not useful,
+        )
+
+    async def adapt(self, feedback: StrategyFeedback) -> None:
+        pass  # HNZ-003+: Lernschnittstelle
+
+    async def metrics(
+        self,
+        ctx: PipelineContext,
+        history: ContextHistory,
+    ) -> StrategyMetrics:
+        m = self._meta(ctx)
+        return StrategyMetrics(
+            iterations=m["budget_used"],
+            tool_calls=0,
+            confidence=m["confidence"],
+        )
+
+    async def on_tool_result(
+        self,
+        ctx: PipelineContext,
+        result: ToolResult,
+        history: ContextHistory,
+    ) -> ToolResultAssessment:
+        return ToolResultAssessment(status="sufficient")
+
+
+StrategyRegistry.register(DeepReasoningStrategy())

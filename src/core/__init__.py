@@ -2,6 +2,7 @@
 
 from .reasoning import (
     ChainOfThoughtStrategy,
+    DeepReasoningStrategy,
     PassthroughStrategy,
     ReasoningStrategy,
     StrategyFeedback,
@@ -54,6 +55,7 @@ from .session_noop import NoopMemoryGate, NoopSessionManager, NoopWorkingMemory
 __all__ = [
     # Compaction
     "ChainOfThoughtStrategy",
+    "DeepReasoningStrategy",
     "CompactionRegistry",
     "CompactionStrategy",
     "NoopRollingSessionPolicy",
