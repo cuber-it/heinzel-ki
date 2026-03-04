@@ -38,7 +38,7 @@ from ._pipeline import (
     dispatch_and_apply, phase, run_pipeline,
     run_post_phases, run_pre_phases,
 )
-from ._provider_bridge import build_messages_from_ctx
+from ._provider_bridge import build_messages_from_ctx, call_provider
 
 logger = logging.getLogger(__name__)
 
