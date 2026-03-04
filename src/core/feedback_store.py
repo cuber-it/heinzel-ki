@@ -47,6 +47,31 @@ class SelectionEvent:
 
 
 # =============================================================================
+# FeedbackEvent
+# =============================================================================
+
+@dataclass
+class FeedbackEvent:
+    """Bewertung eines Turns durch den User."""
+    turn_id: str                          # Turn-ID (session_id + iteration reicht)
+    session_id: str
+    rating: int                           # 1-5 (1=schlecht, 5=sehr gut)
+    comment: str = ""                     # optionaler Freitext
+    strategy_used: str = ""              # welche Strategy aktiv war
+    ts: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def as_dict(self) -> dict:
+        return {
+            "turn_id": self.turn_id,
+            "session_id": self.session_id,
+            "rating": self.rating,
+            "comment": self.comment,
+            "strategy_used": self.strategy_used,
+            "ts": self.ts,
+        }
+
+
+# =============================================================================
 # ABC
 # =============================================================================
 
@@ -62,7 +87,15 @@ class FeedbackStore(ABC):
 
     @abstractmethod
     async def get_stats(self) -> list[dict]:
-        """Aggregierte Statistik zurückgeben."""
+        """Aggregierte Strategie-Selektions-Statistik."""
+
+    @abstractmethod
+    async def log_feedback(self, event: FeedbackEvent) -> None:
+        """User-Bewertung eines Turns speichern (Rating + optionaler Kommentar)."""
+
+    @abstractmethod
+    async def get_feedback_stats(self) -> list[dict]:
+        """Aggregierte Bewertungs-Statistik (Durchschnitt pro Strategy etc.)."""
 
 
 # =============================================================================
@@ -74,6 +107,7 @@ class NoopFeedbackStore(FeedbackStore):
 
     def __init__(self) -> None:
         self.events: list[SelectionEvent] = []
+        self.feedback_events: list[FeedbackEvent] = []
 
     async def log(self, event: SelectionEvent) -> None:
         self.events.append(event)
@@ -82,6 +116,12 @@ class NoopFeedbackStore(FeedbackStore):
         pass
 
     async def get_stats(self) -> list[dict]:
+        return []
+
+    async def log_feedback(self, event: FeedbackEvent) -> None:
+        self.feedback_events.append(event)
+
+    async def get_feedback_stats(self) -> list[dict]:
         return []
 
 
@@ -102,6 +142,15 @@ class SqliteFeedbackStore(FeedbackStore):
         llm_result       TEXT,
         final_strategy   TEXT,
         user_override    TEXT
+    );
+    CREATE TABLE IF NOT EXISTS feedback_events (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts               TEXT NOT NULL,
+        turn_id          TEXT,
+        session_id       TEXT,
+        rating           INTEGER,
+        comment          TEXT,
+        strategy_used    TEXT
     )
     """
 
@@ -112,8 +161,8 @@ class SqliteFeedbackStore(FeedbackStore):
 
     def _init_db(self) -> None:
         with sqlite3.connect(self._path) as con:
-            con.execute(self._CREATE)
-            con.commit()
+            con.executescript(self._CREATE)
+
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._path)
@@ -169,9 +218,44 @@ class SqliteFeedbackStore(FeedbackStore):
             """).fetchall()
             return [dict(r) for r in rows]
 
+    async def log_feedback(self, event: FeedbackEvent) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._sync_log_feedback, event)
+
+    def _sync_log_feedback(self, event: FeedbackEvent) -> None:
+        with self._connect() as con:
+            con.execute(
+                """INSERT INTO feedback_events
+                   (ts, turn_id, session_id, rating, comment, strategy_used)
+                   VALUES (?,?,?,?,?,?)""",
+                (event.ts, event.turn_id, event.session_id,
+                 event.rating, event.comment, event.strategy_used),
+            )
+            con.commit()
+
+    async def get_feedback_stats(self) -> list[dict]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._sync_feedback_stats)
+
+    def _sync_feedback_stats(self) -> list[dict]:
+        with self._connect() as con:
+            con.row_factory = sqlite3.Row
+            rows = con.execute("""
+                SELECT
+                    strategy_used,
+                    COUNT(*) as total,
+                    ROUND(AVG(rating), 2) as avg_rating,
+                    SUM(CASE WHEN comment != '' THEN 1 ELSE 0 END) as with_comment
+                FROM feedback_events
+                GROUP BY strategy_used
+                ORDER BY avg_rating DESC
+            """).fetchall()
+            return [dict(r) for r in rows]
+
 
 __all__ = [
     "SelectionEvent",
+    "FeedbackEvent",
     "FeedbackStore",
     "NoopFeedbackStore",
     "SqliteFeedbackStore",

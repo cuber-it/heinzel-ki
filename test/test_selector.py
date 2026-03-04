@@ -158,3 +158,66 @@ class TestSqliteFeedbackStore:
         stats = await store.get_stats()
         overridden = sum(s["overridden"] for s in stats)
         assert overridden == 1
+
+
+# =============================================================================
+# FeedbackEvent / Bewertungsschnittstelle
+# =============================================================================
+
+class TestFeedbackEvent:
+
+    def test_as_dict_felder(self):
+        from core.feedback_store import FeedbackEvent
+        ev = FeedbackEvent(turn_id="t1", session_id="s1", rating=4, comment="gut", strategy_used="passthrough")
+        d = ev.as_dict()
+        assert d["rating"] == 4
+        assert d["comment"] == "gut"
+        assert d["strategy_used"] == "passthrough"
+        assert "ts" in d
+
+
+class TestNoopFeedbackStoreBewertung:
+
+    @pytest.mark.asyncio
+    async def test_log_feedback_speichert(self):
+        from core.feedback_store import FeedbackEvent
+        store = NoopFeedbackStore()
+        await store.log_feedback(FeedbackEvent(turn_id="t1", session_id="s1", rating=5))
+        assert len(store.feedback_events) == 1
+        assert store.feedback_events[0].rating == 5
+
+    @pytest.mark.asyncio
+    async def test_feedback_stats_leer(self):
+        store = NoopFeedbackStore()
+        assert await store.get_feedback_stats() == []
+
+
+class TestSqliteFeedbackStoreBewertung:
+
+    @pytest.mark.asyncio
+    async def test_log_und_stats(self, tmp_path):
+        from core.feedback_store import FeedbackEvent
+        store = SqliteFeedbackStore(db_path=tmp_path / "fb.db")
+        await store.log_feedback(FeedbackEvent(
+            turn_id="t1", session_id="s1", rating=5,
+            comment="super", strategy_used="passthrough"
+        ))
+        await store.log_feedback(FeedbackEvent(
+            turn_id="t2", session_id="s1", rating=3,
+            comment="", strategy_used="passthrough"
+        ))
+        stats = await store.get_feedback_stats()
+        assert len(stats) == 1
+        assert stats[0]["strategy_used"] == "passthrough"
+        assert stats[0]["avg_rating"] == 4.0
+        assert stats[0]["with_comment"] == 1
+
+    @pytest.mark.asyncio
+    async def test_verschiedene_strategien(self, tmp_path):
+        from core.feedback_store import FeedbackEvent
+        store = SqliteFeedbackStore(db_path=tmp_path / "fb2.db")
+        await store.log_feedback(FeedbackEvent(turn_id="t1", session_id="s1", rating=5, strategy_used="passthrough"))
+        await store.log_feedback(FeedbackEvent(turn_id="t2", session_id="s1", rating=2, strategy_used="deep_reasoning"))
+        stats = await store.get_feedback_stats()
+        strategies = {s["strategy_used"] for s in stats}
+        assert strategies == {"passthrough", "deep_reasoning"}
