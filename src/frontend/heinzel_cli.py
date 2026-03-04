@@ -1,34 +1,52 @@
 #!/usr/bin/env python3
-"""heinzel_cli.py — Erster lebender Heinzel. Testheinzel auf nacktem Core.
+"""heinzel_cli.py — Interaktiver Heinzel auf dem Core-Runner.
 
-Testwerkzeug und Referenzimplementierung — kein Produkt.
-Beweist dass der Core als Bibliothek funktioniert.
+Demonstriert und nutzt alle Core-Features:
+  - Runner mit HttpLLMProvider
+  - NoopSessionManager mit Session-Tracking
+  - SummarizingCompactionStrategy (oder Truncation per Config)
+  - PassthroughStrategy (Default) — erweiterbar per Config
+  - AgentConfig via YAML oder Defaults
 
-Defaults (ueberschreibbar per Config):
-  - Provider-URL: http://localhost:12101
-  - Log-Dir:      ./logs
-  - Heinzel-Name: heinzel-1
-  - Modell:       aus Provider-Default
+Kommandos:
+  !quit      — Session beenden
+  !history   — Dialoglog der aktuellen Session anzeigen
+  !memory    — Working Memory Status (Turns, Tokens, Compaction)
+  !session   — Session-Details
+  !strategy  — Aktive Reasoning-Strategie anzeigen/wechseln
+  !compact   — Compaction-Strategie anzeigen
+  !config    — Aktive Konfiguration anzeigen
 
-Kommandos (alle mit !):
-  !quit     — Session beenden
-  !history  — Dialoglog der aktuellen Session anzeigen
+Config-YAML (optional, Suchpfad: ./heinzel.yaml, ./config/heinzel.yaml):
+
+  agent:
+    id: mein-heinzel
+    name: Heinzel
+    role: assistant
+    goal: Helfe dem Nutzer so gut wie moeglich.
+
+  provider:
+    url: http://localhost:12101
+    model: ""
+
+  memory:
+    max_tokens: 128000
+    max_turns: 10000
+    compact_threshold: 0.80   # Compaction ab 80% Kontext
+    roll_threshold: 0.95      # Rolling Session ab 95%
+    compaction_strategy: summarizing   # summarizing | truncation
+
+  reasoning:
+    strategy: passthrough     # passthrough | (HNZ-003+: chain_of_thought etc.)
+
+  logging:
+    log_dir: ./logs
+    log_addons: false
 
 Verwendung:
   python heinzel_cli.py
   python heinzel_cli.py --config heinzel.yaml
-
-Config-YAML (optional):
-  heinzel:
-    name: mein-heinzel
-    id: optional-feste-id
-  provider:
-    url: http://localhost:12101
-    model: ""
-  logging:
-    log_dir: ./logs
-    log_addons: false
-    log_mcp: false
+  python heinzel_cli.py --provider http://localhost:12101
 """
 
 from __future__ import annotations
@@ -41,18 +59,28 @@ from typing import Any
 
 import yaml
 
-# Core — einzige externe Abhaengigkeit
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from core import Runner, HttpLLMProvider
+
+from core import (
+    CompactionRegistry,
+    HttpLLMProvider,
+    NoopSessionManager,
+    Runner,
+    StrategyRegistry,
+    SummarizingCompactionStrategy,
+    TruncationCompactionStrategy,
+    find_config_file,
+)
 
 
 # =============================================================================
 # Kommando-Handler
 # =============================================================================
 
-def handle_history(heinzel: Runner) -> None:
+
+def handle_history(runner: Runner) -> None:
     """!history — Dialoglog der aktuellen Session ausgeben."""
-    log_path = heinzel._dialog_log.log_path
+    log_path = runner._dialog_log.log_path
     if log_path is None or not log_path.exists():
         print("[kein Log vorhanden]")
         return
@@ -61,35 +89,43 @@ def handle_history(heinzel: Runner) -> None:
     print("--- Ende ---\n")
 
 
-async def handle_memory(heinzel: Runner) -> None:
-    """!memory — Working Memory Status anzeigen."""
-    session = heinzel.session_manager.active_session
+async def handle_memory(runner: Runner) -> None:
+    """!memory — Working Memory + Compaction-Status anzeigen."""
+    session = runner.session_manager.active_session
     if session is None:
-        print("[kein aktive Session]")
+        print("[keine aktive Session]")
         return
-    wm = await heinzel.session_manager.get_working_memory(session.id)
-    turns = await wm.get_recent_turns(999)
+
+    wm = await runner.session_manager.get_working_memory(session.id)
+    turns = await wm.get_recent_turns(9999)
     tokens = wm.estimated_tokens()
-    pct = int(tokens / wm.max_tokens * 100) if wm.max_tokens else 0
+    cw = runner.provider.context_window or wm.max_tokens
+
+    compact_pct = int(tokens / cw * 100) if cw else 0
+    compact_thresh = int(getattr(wm, "compact_threshold", 0.80) * 100)
+    roll_thresh = int(getattr(wm, "roll_threshold", 0.95) * 100)
+
+    strat_name = getattr(
+        getattr(wm, "compaction_strategy", None), "name", "unbekannt"
+    )
+
     print(f"\n--- Working Memory ---")
-    print(f"  Session:    {session.id[:8]}...")
-    print(f"  Turns:      {len(turns)} (max {wm.max_turns})")
-    print(f"  ~Token:     {tokens} / {wm.max_tokens} ({pct}%)")
+    print(f"  Session:     {session.id[:12]}...")
+    print(f"  Turns:       {len(turns)} / {wm.max_turns}")
+    print(f"  ~Token:      {tokens} / {cw} ({compact_pct}%)")
+    print(f"  Compact ab:  {compact_thresh}%  |  Roll ab: {roll_thresh}%")
+    print(f"  Strategie:   {strat_name}")
     if turns:
-        if len(turns[0].raw_input) > 50:
-            print(f"  Aeltester: '{turns[0].raw_input[:50]}...'")
-        else:
-            print(f"  Aeltester: '{turns[0].raw_input}'")
-        if len(turns[-1].raw_input) > 50:
-            print(f"  Juengster: '{turns[-1].raw_input[:50]}...'")
-        else:
-            print(f"  Juengster: '{turns[-1].raw_input}'")
+        first = turns[0].raw_input[:60].replace("\n", " ")
+        last = turns[-1].raw_input[:60].replace("\n", " ")
+        print(f"  Aeltester:   '{first}'")
+        print(f"  Juengster:   '{last}'")
     print("--- Ende ---\n")
 
 
-async def handle_session(heinzel: Runner) -> None:
-    """!session — aktive Session anzeigen."""
-    session = heinzel.session_manager.active_session
+async def handle_session(runner: Runner) -> None:
+    """!session — Session-Details."""
+    session = runner.session_manager.active_session
     if session is None:
         print("[keine aktive Session]")
         return
@@ -102,36 +138,94 @@ async def handle_session(heinzel: Runner) -> None:
     print("--- Ende ---\n")
 
 
-async def memory_status(heinzel: Runner) -> str:
-    """Einzeilige Kontext-Anzeige fuer nach jeder Antwort."""
-    session = heinzel.session_manager.active_session
+def handle_strategy(runner: Runner, args: str) -> None:
+    """!strategy [name] — Strategie anzeigen oder wechseln."""
+    if not args:
+        name = runner.reasoning_strategy.name
+        desc = runner.reasoning_strategy.description
+        available = StrategyRegistry.list_available()
+        print(f"\n--- Reasoning-Strategie ---")
+        print(f"  Aktiv:      {name}")
+        print(f"  Info:       {desc}")
+        print(f"  Verfuegbar: {', '.join(available)}")
+        print("--- Ende ---\n")
+    else:
+        try:
+            runner.set_strategy(args.strip())
+            print(f"[Strategie gewechselt auf: {args.strip()}]")
+        except KeyError:
+            available = StrategyRegistry.list_available()
+            print(
+                f"[Unbekannte Strategie: '{args.strip()}' "
+                f"— verfuegbar: {', '.join(available)}]"
+            )
+
+
+def handle_compact(runner: Runner) -> None:
+    """!compact — Compaction-Strategie anzeigen."""
+    available = CompactionRegistry.list_available()
+    default = CompactionRegistry.get_default().name
+    print(f"\n--- Compaction ---")
+    print(f"  Default:    {default}")
+    print(f"  Verfuegbar: {', '.join(available)}")
+    print("--- Ende ---\n")
+
+
+def handle_config(cfg: dict[str, Any]) -> None:
+    """!config — Aktive Konfiguration anzeigen."""
+    print("\n--- Aktive Config ---")
+    for section, values in cfg.items():
+        if isinstance(values, dict):
+            print(f"  [{section}]")
+            for k, v in values.items():
+                print(f"    {k}: {v}")
+        else:
+            print(f"  {section}: {values}")
+    print("--- Ende ---\n")
+
+
+# =============================================================================
+# Status-Zeile nach jeder Antwort
+# =============================================================================
+
+
+async def status_line(runner: Runner) -> str:
+    """Einzeilige Kontext-Anzeige."""
+    session = runner.session_manager.active_session
     if session is None:
         return ""
-    wm = await heinzel.session_manager.get_working_memory(session.id)
-    turns = await wm.get_recent_turns(999)
+    wm = await runner.session_manager.get_working_memory(session.id)
+    turns = await wm.get_recent_turns(9999)
     tokens = wm.estimated_tokens()
-    cw = heinzel.provider.context_window
-    if cw:
-        pct = int(tokens / cw * 100)
-        return f"[Kontext: {len(turns)} Turns | ~{tokens} Token | {pct}% von {cw}]"
-    return f"[Kontext: {len(turns)} Turns | ~{tokens} Token]"
+    cw = runner.provider.context_window or wm.max_tokens
+    pct = int(tokens / cw * 100) if cw else 0
+    strategy = runner.reasoning_strategy.name
+    return (
+        f"[{len(turns)} Turns | ~{tokens} Token | "
+        f"{pct}% | Strategie: {strategy}]"
+    )
 
 
 # =============================================================================
 # REPL
 # =============================================================================
 
-async def run_repl(heinzel: Runner, provider_url: str) -> None:
-    """Hauptschleife. Laeuft bis !quit."""
-    log_path = heinzel._dialog_log.log_path
-    print(f"\n{'='*60}")
-    print(f"  Heinzel: {heinzel.name}  ({heinzel.agent_id[:8]}...)")
-    print(f"  Provider: {provider_url}")
-    print(f"  Log: {log_path or '(kein Log)'}")
-    print(f"  Kommandos: !quit  !history  !memory  !session")
-    print(f"{'='*60}\n")
 
-    await heinzel.connect()
+async def run_repl(runner: Runner, cfg: dict[str, Any]) -> None:
+    """Hauptschleife."""
+    provider_url = cfg.get("provider", {}).get("url", "?")
+    log_path = runner._dialog_log.log_path
+
+    print(f"\n{'=' * 60}")
+    print(f"  Agent:    {runner.name}  ({runner.agent_id[:8]}...)")
+    print(f"  Provider: {provider_url}")
+    print(f"  Strategie:{runner.reasoning_strategy.name}")
+    print(f"  Log:      {log_path or '(kein Log)'}")
+    print(f"  Kommandos: !quit  !history  !memory  !session")
+    print(f"             !strategy [name]  !compact  !config")
+    print(f"{'=' * 60}\n")
+
+    await runner.connect()
 
     try:
         while True:
@@ -144,110 +238,169 @@ async def run_repl(heinzel: Runner, provider_url: str) -> None:
             if not user_input:
                 continue
 
-            # Kommandos
-            if user_input.lower() == "!quit":
+            cmd, _, rest = user_input.partition(" ")
+            cmd_lower = cmd.lower()
+
+            if cmd_lower == "!quit":
                 print("[Session beendet]")
                 break
-
-            if user_input.lower() == "!history":
-                handle_history(heinzel)
+            elif cmd_lower == "!history":
+                handle_history(runner)
+                continue
+            elif cmd_lower == "!memory":
+                await handle_memory(runner)
+                continue
+            elif cmd_lower == "!session":
+                await handle_session(runner)
+                continue
+            elif cmd_lower == "!strategy":
+                handle_strategy(runner, rest)
+                continue
+            elif cmd_lower == "!compact":
+                handle_compact(runner)
+                continue
+            elif cmd_lower == "!config":
+                handle_config(cfg)
+                continue
+            elif user_input.startswith("!"):
+                print(
+                    f"[Unbekanntes Kommando: {cmd}  —  "
+                    f"!quit !history !memory !session !strategy !compact !config]"
+                )
                 continue
 
-            if user_input.lower() == "!memory":
-                await handle_memory(heinzel)
-                continue
-
-            if user_input.lower() == "!session":
-                await handle_session(heinzel)
-                continue
-
-            if user_input.startswith("!"):
-                print(f"[Unbekanntes Kommando: {user_input}  —  verfuegbar: !quit !history !memory !session]")
-                continue
-
-            # Chat via Streaming
+            # Chat
             print("Heinzel: ", end="", flush=True)
             try:
-                async for chunk in heinzel.chat_stream(user_input):
+                async for chunk in runner.chat_stream(user_input):
                     print(chunk, end="", flush=True)
-                print()  # Zeilenumbruch nach Antwort
-                status = await memory_status(heinzel)
-                if status:
-                    print(f"\033[2m{status}\033[0m")  # gedimmt anzeigen
+                print()
+                line = await status_line(runner)
+                if line:
+                    print(f"\033[2m{line}\033[0m")
             except Exception as exc:
                 print(f"\n[Fehler: {exc}]")
 
     finally:
-        await heinzel.disconnect()
+        await runner.disconnect()
+
+
+# =============================================================================
+# Setup
+# =============================================================================
+
+
+def build_session_manager(cfg: dict[str, Any]) -> NoopSessionManager:
+    """SessionManager aus Config bauen inkl. Compaction-Strategie."""
+    mem = cfg.get("memory", {})
+    max_tokens = int(mem.get("max_tokens", 128_000))
+    max_turns = int(mem.get("max_turns", 10_000))
+    strategy_name = str(mem.get("compaction_strategy", "summarizing")).lower()
+
+    # Compaction-Strategie registrieren und als Default setzen
+    if strategy_name == "truncation":
+        CompactionRegistry.set_default("truncation")
+    else:
+        CompactionRegistry.set_default("summarizing")
+
+    return NoopSessionManager(
+        max_tokens=max_tokens,
+        max_turns=max_turns,
+    )
+
+
+def build_runner(cfg: dict[str, Any]) -> Runner:
+    """Runner aus Config zusammenbauen."""
+    provider_cfg = cfg.get("provider", {})
+    agent_cfg = cfg.get("agent", {})
+    reasoning_cfg = cfg.get("reasoning", {})
+
+    provider = HttpLLMProvider(
+        name="cli-provider",
+        base_url=provider_cfg.get("url", "http://localhost:12101"),
+        model=provider_cfg.get("model", ""),
+    )
+
+    runner = Runner(
+        provider=provider,
+        name=agent_cfg.get("name", "Heinzel"),
+        agent_id=agent_cfg.get("id", None),
+        config=cfg,
+    )
+
+    # SessionManager mit Compaction
+    runner.set_session_manager(build_session_manager(cfg))
+
+    # Reasoning-Strategie
+    strategy_name = reasoning_cfg.get("strategy", "passthrough")
+    try:
+        runner.set_strategy(strategy_name)
+    except KeyError:
+        print(
+            f"[Warnung: Strategie '{strategy_name}' nicht registriert "
+            f"— nutze passthrough]"
+        )
+
+    return runner
+
+
+# =============================================================================
+# Config laden
+# =============================================================================
+
+
+def load_config(config_path: str | None, provider_override: str | None) -> dict[str, Any]:
+    """Config laden mit Defaults."""
+    defaults: dict[str, Any] = {
+        "agent": {"name": "Heinzel", "id": None},
+        "provider": {"url": "http://localhost:12101", "model": ""},
+        "memory": {
+            "max_tokens": 128_000,
+            "max_turns": 10_000,
+            "compact_threshold": 0.80,
+            "roll_threshold": 0.95,
+            "compaction_strategy": "summarizing",
+        },
+        "reasoning": {"strategy": "passthrough"},
+        "logging": {"log_dir": "./logs", "log_addons": False},
+    }
+
+    path = Path(config_path) if config_path else find_config_file()
+
+    if path and path.exists():
+        try:
+            loaded = yaml.safe_load(path.read_text()) or {}
+            for section, values in loaded.items():
+                if section in defaults and isinstance(values, dict):
+                    defaults[section].update(values)
+                else:
+                    defaults[section] = values
+        except Exception as exc:
+            print(f"[Warnung: Config-Fehler: {exc} — nutze Defaults]")
+    elif config_path:
+        print(f"[Warnung: '{config_path}' nicht gefunden — nutze Defaults]")
+
+    if provider_override:
+        defaults["provider"]["url"] = provider_override
+
+    return defaults
 
 
 # =============================================================================
 # Einstiegspunkt
 # =============================================================================
 
-def load_config(config_path: str | None) -> dict[str, Any]:
-    """Config laden. Hardcode-Defaults wenn keine Datei."""
-    defaults: dict[str, Any] = {
-        "heinzel": {
-            "name": "heinzel-1",
-        },
-        "provider": {
-            "url": "http://localhost:12101",
-            "model": "",
-        },
-        "logging": {
-            "log_dir": "./logs",
-            "log_addons": False,
-            "log_mcp": False,
-        },
-    }
-    if config_path is None:
-        return defaults
-
-    try:
-        with open(config_path) as f:
-            loaded = yaml.safe_load(f) or {}
-        # Tief-mergen: geladene Werte ueberschreiben Defaults
-        for section, values in loaded.items():
-            if section in defaults and isinstance(values, dict):
-                defaults[section].update(values)
-            else:
-                defaults[section] = values
-        return defaults
-    except FileNotFoundError:
-        print(f"[Warnung: Config-Datei '{config_path}' nicht gefunden — nutze Defaults]")
-        return defaults
-    except Exception as exc:
-        print(f"[Warnung: Config-Fehler: {exc} — nutze Defaults]")
-        return defaults
-
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Heinzel CLI — Testheinzel")
-    parser.add_argument("--config", "-c", help="Pfad zur YAML-Config", default=None)
-    parser.add_argument("--provider", "-p", help="Provider-URL (ueberschreibt Config)", default=None)
+    parser = argparse.ArgumentParser(description="Heinzel CLI")
+    parser.add_argument("--config", "-c", help="Pfad zur YAML-Config")
+    parser.add_argument("--provider", "-p", help="Provider-URL (ueberschreibt Config)")
     args = parser.parse_args()
 
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, args.provider)
+    runner = build_runner(cfg)
 
-    # --provider ueberschreibt Config
-    if args.provider:
-        cfg["provider"]["url"] = args.provider
-
-    provider_url: str = cfg["provider"]["url"]
-    model: str = cfg["provider"].get("model", "")
-    heinzel_name: str = cfg["heinzel"]["name"]
-    heinzel_id: str | None = cfg["heinzel"].get("id", None)
-
-    provider = HttpLLMProvider(name="cli-provider", base_url=provider_url, model=model)
-    heinzel = Runner(
-        provider=provider,
-        name=heinzel_name,
-        agent_id=heinzel_id,
-        config=cfg,
-    )
-
-    asyncio.run(run_repl(heinzel, provider_url))
+    asyncio.run(run_repl(runner, cfg))
 
 
 if __name__ == "__main__":
