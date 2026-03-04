@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
-from .models.base import ToolResult
+from .models.base import Message, MessageType, ToolResult
 from .models.placeholders import Reflection, StepPlan
 
 if TYPE_CHECKING:
@@ -671,14 +671,15 @@ class DeepReasoningStrategy(ReasoningStrategy):
         ctx: PipelineContext,
         history: ContextHistory,
     ) -> PipelineContext:
-        """Reasoning-Metadaten + Message-History initialisieren."""
+        """Reasoning-Metadaten + erste Phase-Frage in ctx.messages schreiben."""
         ctx = self._update_meta(ctx, trace="", phase="decompose", confidence=0.0, budget_used=0)
-        # Erste Phase-Frage als user-Message vorbereiten
         first_question = self._PHASE_QUESTIONS["decompose"]
-        return ctx.evolve(metadata={
-            **ctx.metadata,
-            "hnz_reasoning_messages": [{"role": "user", "content": first_question}],
-        })
+        first_msg = Message(
+            role="user",
+            content=first_question,
+            message_type=MessageType.REASONING,
+        )
+        return ctx.evolve(messages=ctx.messages + (first_msg,))
 
     async def should_continue(
         self,
@@ -703,7 +704,7 @@ class DeepReasoningStrategy(ReasoningStrategy):
         ctx: PipelineContext,
         history: ContextHistory,
     ) -> StepPlan:
-        """Naechste Phase bestimmen. Kein Prompt-Dump — Phase-Frage ist in hnz_reasoning_messages."""
+        """Naechste Phase bestimmen. Phase-Frage liegt bereits in ctx.messages (REASONING)."""
         m = self._meta(ctx)
         phase = m["phase"]
         budget = m["budget_used"]
@@ -743,18 +744,22 @@ class DeepReasoningStrategy(ReasoningStrategy):
         else:
             next_phase = self._phase_for_iteration(next_budget)
 
-        # Message-History aufbauen:
-        # 1. Phase-Antwort als assistant-Message
-        # 2. Naechste Phase-Frage als user-Message (ausser Synthese: die laeuft als finaler Stream)
-        msgs = list(ctx.metadata.get("hnz_reasoning_messages", []))
-        msgs.append({"role": "assistant", "content": response})
-        if next_phase != "synthesize":
-            msgs.append({"role": "user", "content": self._PHASE_QUESTIONS[next_phase]})
-        else:
-            msgs.append({"role": "user", "content": self._PHASE_QUESTIONS["synthesize"]})
+        # Phase-Antwort + naechste Phase-Frage direkt in ctx.messages schreiben
+        phase_response = Message(
+            role="assistant",
+            content=response,
+            message_type=MessageType.REASONING,
+        )
+        next_question = self._PHASE_QUESTIONS[next_phase]  # synthesize oder naechste Phase
+        phase_question = Message(
+            role="user",
+            content=next_question,
+            message_type=MessageType.REASONING,
+        )
+        new_messages = ctx.messages + (phase_response, phase_question)
 
         ctx = self._update_meta(ctx, phase=next_phase, confidence=confidence, budget_used=next_budget)
-        ctx = ctx.evolve(metadata={**ctx.metadata, "hnz_reasoning_messages": msgs})
+        ctx = ctx.evolve(messages=new_messages)
 
         useful = len(response) > 100
         return Reflection(
