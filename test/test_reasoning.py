@@ -1,21 +1,21 @@
 """Tests fuer ReasoningStrategy Interface + PassthroughStrategy
 + StrategyRegistry.
 
-HNZ-002-0009 — Compliance-Tests, Registry-Tests, BaseHeinzel.set_strategy().
+HNZ-002-0009 — Compliance-Tests, Registry-Tests, Runner.set_strategy().
 
 Struktur:
   - assert_strategy_compliance(): Compliance-Fixture fuer HNZ-003+ Strategien
   - DummyStrategy: minimale Test-Impl (nicht fuer Produktion)
   - TestPassthroughStrategy: Verhalten der Default-Impl
   - TestStrategyRegistry: Singleton-Verhalten
-  - TestBaseHeinzelSetStrategy: Laufzeit-Wechsel via BaseHeinzel
+  - TestRunnerSetStrategy: Laufzeit-Wechsel via Runner
 """
 
 from __future__ import annotations
 
 import pytest
 
-from core.base import BaseHeinzel, LLMProvider
+from core.runner import Runner, LLMProvider
 from core.models import PipelineContext
 from core.models.context import ContextHistory
 from core.models.placeholders import Reflection, StepPlan
@@ -36,7 +36,7 @@ from core.models.base import ToolResult
 
 
 class MockProvider(LLMProvider):
-    """Minimaler Provider fuer BaseHeinzel-Tests."""
+    """Minimaler Provider fuer Runner-Tests."""
 
     def __init__(self, response: str = "ok") -> None:
         self._response = response
@@ -117,10 +117,10 @@ def strategy() -> PassthroughStrategy:
 
 
 @pytest.fixture
-def make_heinzel():
-    def _make(response: str = "ok") -> tuple[BaseHeinzel, MockProvider]:
+def make_runner():
+    def _make(response: str = "ok") -> tuple[Runner, MockProvider]:
         provider = MockProvider(response)
-        heinzel = BaseHeinzel(provider=provider, name="test-reasoning")
+        heinzel = Runner(provider=provider, name="test-reasoning")
         return heinzel, provider
     return _make
 
@@ -341,11 +341,11 @@ class TestStrategyRegistry:
 
 
 # ---------------------------------------------------------------------------
-# TestBaseHeinzelSetStrategy
+# TestRunnerSetStrategy
 # ---------------------------------------------------------------------------
 
 
-class TestBaseHeinzelSetStrategy:
+class TestRunnerSetStrategy:
 
     def setup_method(self):
         StrategyRegistry.set_default("passthrough")
@@ -355,43 +355,43 @@ class TestBaseHeinzelSetStrategy:
         StrategyRegistry._strategies.pop("dummy", None)
         StrategyRegistry.set_default("passthrough")
 
-    def test_default_strategy_is_passthrough(self, make_heinzel):
-        heinzel, _ = make_heinzel()
+    def test_default_strategy_is_passthrough(self, make_runner):
+        heinzel, _ = make_runner()
         assert heinzel.reasoning_strategy.name == "passthrough"
 
-    def test_set_strategy_by_name(self, make_heinzel):
-        heinzel, _ = make_heinzel()
+    def test_set_strategy_by_name(self, make_runner):
+        heinzel, _ = make_runner()
         StrategyRegistry.register(DummyStrategy())
         heinzel.set_strategy("dummy")
         assert heinzel.reasoning_strategy.name == "dummy"
 
-    def test_set_strategy_by_object(self, make_heinzel):
-        heinzel, _ = make_heinzel()
+    def test_set_strategy_by_object(self, make_runner):
+        heinzel, _ = make_runner()
         heinzel.set_strategy(DummyStrategy())
         assert heinzel.reasoning_strategy.name == "dummy"
 
-    def test_set_strategy_by_object_registers_in_registry(self, make_heinzel):
-        heinzel, _ = make_heinzel()
+    def test_set_strategy_by_object_registers_in_registry(self, make_runner):
+        heinzel, _ = make_runner()
         heinzel.set_strategy(DummyStrategy())
         # Strategie muss jetzt in der Registry sein
         assert StrategyRegistry.get("dummy") is not None
 
-    def test_set_strategy_unknown_name_raises_key_error(self, make_heinzel):
-        heinzel, _ = make_heinzel()
+    def test_set_strategy_unknown_name_raises_key_error(self, make_runner):
+        heinzel, _ = make_runner()
         with pytest.raises(KeyError):
             heinzel.set_strategy("nicht_registriert_xyz")
 
-    def test_set_strategy_back_to_passthrough(self, make_heinzel):
-        heinzel, _ = make_heinzel()
+    def test_set_strategy_back_to_passthrough(self, make_runner):
+        heinzel, _ = make_runner()
         StrategyRegistry.register(DummyStrategy())
         heinzel.set_strategy("dummy")
         heinzel.set_strategy("passthrough")
         assert heinzel.reasoning_strategy.name == "passthrough"
 
-    def test_two_heinzel_independent_strategies(self, make_heinzel):
+    def test_two_heinzel_independent_strategies(self, make_runner):
         """Zwei Heinzel-Instanzen haben unabhaengige Strategien."""
-        h1, _ = make_heinzel()
-        h2, _ = make_heinzel()
+        h1, _ = make_runner()
+        h2, _ = make_runner()
         StrategyRegistry.register(DummyStrategy())
         h1.set_strategy("dummy")
         # h2 unveraendert

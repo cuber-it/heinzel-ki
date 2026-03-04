@@ -1,6 +1,6 @@
 """Noop-Implementierungen fuer Session-Management.
 
-NoopSessionManager und NoopWorkingMemory sind die Defaults in BaseHeinzel.
+NoopSessionManager und NoopWorkingMemory sind die Defaults im Runner.
 Sie halten alles im RAM - kein Persist, nach Restart weg.
 Fuer produktiven Einsatz werden diese in HNZ-003 durch persistente
 Implementierungen ersetzt.
@@ -178,7 +178,7 @@ class NoopSessionManager(SessionManager):
     """In-memory Session-Verwaltung ohne Persist.
 
     Haelt Sessions und Turns im RAM. Nach Restart weg.
-    Default in BaseHeinzel.
+    Default im Runner.
     """
 
     def __init__(
@@ -199,14 +199,14 @@ class NoopSessionManager(SessionManager):
 
     async def create_session(
         self,
-        heinzel_id: str,
+        agent_id: str,
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> Session:
         """Neue Session anlegen und als aktiv setzen."""
         session = Session(
             id=session_id or _uuid(),
-            heinzel_id=heinzel_id,
+            agent_id=agent_id,
             user_id=user_id,
         )
         self._sessions[session.id] = session
@@ -262,12 +262,12 @@ class NoopSessionManager(SessionManager):
         return turns[-limit:] if limit < len(turns) else list(turns)
 
     async def list_sessions(
-        self, heinzel_id: str, limit: int = 20
+        self, agent_id: str, limit: int = 20
     ) -> list[Session]:
         """Alle Sessions eines Heinzel, neueste zuerst."""
         sessions = [
             s for s in self._sessions.values()
-            if s.heinzel_id == heinzel_id
+            if s.agent_id == agent_id
         ]
         sessions.sort(key=lambda s: s.started_at, reverse=True)
         return sessions[:limit]
@@ -315,7 +315,7 @@ class NoopSessionManager(SessionManager):
 
         # Neue Session mit Handover in Metadata
         new_session = await self.create_session(
-            heinzel_id=session.heinzel_id,
+            agent_id=session.agent_id,
             user_id=session.user_id,
         )
         self._sessions[new_session.id] = new_session.model_copy(

@@ -1,4 +1,4 @@
-"""_DialogLogger — internes Dialoglogging fuer BaseHeinzel.
+"""_DialogLogger — internes Dialoglogging fuer Runner.
 
 Schreibt den kompletten Dialog eines Heinzel in eine Textdatei.
 Package-intern: nicht in __init__.py exportiert.
@@ -17,11 +17,11 @@ class _DialogLogger:
     Immer aktiv: USER-Eingaben und HEINZEL-Antworten.
     Optional: AddOn-Aufrufe (log_addons) und MCP-Nutzung (log_mcp).
 
-    Dateiname: {log_dir}/{heinzel_id}.log
+    Dateiname: {log_dir}/{agent_id}.log
     Format:    [ISO-Timestamp] ROLE: Text
     """
 
-    def __init__(self, heinzel_id: str, cfg: dict) -> None:
+    def __init__(self, agent_id: str, cfg: dict) -> None:
         log_cfg = cfg.get("logging", {})
         log_dir = Path(log_cfg.get("log_dir", "./logs"))
         self.log_addons: bool = bool(log_cfg.get("log_addons", False))
@@ -32,9 +32,9 @@ class _DialogLogger:
 
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
-            self._path = log_dir / f"{heinzel_id}.log"
+            self._path = log_dir / f"{agent_id}.log"
             self._file = open(self._path, "a", encoding="utf-8", buffering=1)
-            self._write(f"=== Session Start -- Heinzel {heinzel_id} ===")
+            self._write(f"=== Session Start -- Agent {agent_id} ===")
         except Exception as exc:
             logging.getLogger(__name__).error(
                 "DialogLogger: Datei konnte nicht geoeffnet werden: %s", exc

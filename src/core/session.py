@@ -71,7 +71,7 @@ class Session(BaseModel, frozen=True):
     """
 
     id: str = Field(default_factory=_uuid)
-    heinzel_id: str
+    agent_id: str
     user_id: str | None = None
     status: SessionStatus = SessionStatus.active
     started_at: datetime = Field(default_factory=_utcnow)
@@ -196,7 +196,7 @@ class SessionManager(ABC):
     @abstractmethod
     async def create_session(
         self,
-        heinzel_id: str,
+        agent_id: str,
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> Session:
@@ -232,7 +232,7 @@ class SessionManager(ABC):
 
     @abstractmethod
     async def list_sessions(
-        self, heinzel_id: str, limit: int = 20
+        self, agent_id: str, limit: int = 20
     ) -> list[Session]:
         """Alle Sessions eines Heinzel, neueste zuerst."""
 

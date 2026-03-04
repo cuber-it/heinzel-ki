@@ -98,7 +98,7 @@ class TestPipelineContext:
         assert ctx2.timestamp >= ctx.timestamp
 
     def test_evolve_preserves_unchanged_fields(self):
-        ctx = PipelineContext(raw_input="original", session_id="s42", heinzel_id="h1")
+        ctx = PipelineContext(raw_input="original", session_id="s42", agent_id="h1")
         ctx2 = ctx.evolve(phase=HookPoint.ON_INPUT_PARSED, parsed_input="parsed")
         assert ctx2.raw_input == "original"
         assert ctx2.session_id == "s42"

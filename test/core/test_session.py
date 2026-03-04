@@ -7,7 +7,7 @@ Abdeckung:
 - NoopWorkingMemory: estimated_tokens, compact
 - NoopSessionManager: create_session, resume_session, end_session, add_turn
 - NoopSessionManager: get_working_memory, list_sessions
-- Integration in BaseHeinzel: ON_MEMORY_QUERY befuellt ctx, ON_STORED speichert Turn
+- Integration in Runner: ON_MEMORY_QUERY befuellt ctx, ON_STORED speichert Turn
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pytest
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock
 
-from core.base import BaseHeinzel, LLMProvider
+from core.runner import Runner, LLMProvider
 from core.exceptions import SessionNotFoundError
 from core.models import PipelineContext, HookPoint
 from core.session import Session, SessionStatus, Turn
@@ -43,8 +43,8 @@ class MockProvider(LLMProvider):
         yield self.response
 
 
-def make_heinzel(response: str = "antwort") -> BaseHeinzel:
-    return BaseHeinzel(provider=MockProvider(response), name="test")
+def make_runner(response: str = "antwort") -> Runner:
+    return Runner(provider=MockProvider(response), name="test")
 
 
 # =============================================================================
@@ -54,13 +54,13 @@ def make_heinzel(response: str = "antwort") -> BaseHeinzel:
 
 class TestSessionModell:
     def test_session_hat_defaults(self):
-        s = Session(heinzel_id="h1")
+        s = Session(agent_id="h1")
         assert s.status == SessionStatus.active
         assert s.turn_count == 0
         assert s.id  # uuid gesetzt
 
     def test_session_ist_frozen(self):
-        s = Session(heinzel_id="h1")
+        s = Session(agent_id="h1")
         with pytest.raises(Exception):
             s.turn_count = 5  # type: ignore
 
@@ -298,16 +298,16 @@ class TestNoopSessionManager:
 
 
 # =============================================================================
-# Integration BaseHeinzel
+# Integration Runner
 # =============================================================================
 
 
-class TestBaseHeinzelSessionIntegration:
+class TestRunnerSessionIntegration:
     @pytest.mark.asyncio
     async def test_working_memory_befuellt_ctx_nach_zweitem_turn(self):
         """Nach dem ersten Turn ist Working Memory leer.
         Nach dem zweiten Turn muss die History im ctx.messages stehen."""
-        heinzel = make_heinzel("antwort")
+        heinzel = make_runner("antwort")
         await heinzel.connect()
         # Erster Turn
         await heinzel.chat("erste frage")
@@ -318,7 +318,7 @@ class TestBaseHeinzelSessionIntegration:
 
     @pytest.mark.asyncio
     async def test_on_stored_speichert_turn_im_session_manager(self):
-        heinzel = make_heinzel("antwort")
+        heinzel = make_runner("antwort")
         await heinzel.connect()
         await heinzel.chat("test nachricht")
         session = heinzel.session_manager.active_session
@@ -327,7 +327,7 @@ class TestBaseHeinzelSessionIntegration:
 
     @pytest.mark.asyncio
     async def test_session_id_konsistent_ueber_mehrere_turns(self):
-        heinzel = make_heinzel()
+        heinzel = make_runner()
         await heinzel.connect()
         _, ctx1 = await heinzel._run_pipeline("turn1", None)
         _, ctx2 = await heinzel._run_pipeline("turn2", None)
@@ -335,7 +335,7 @@ class TestBaseHeinzelSessionIntegration:
 
     @pytest.mark.asyncio
     async def test_memory_tokens_used_in_ctx(self):
-        heinzel = make_heinzel()
+        heinzel = make_runner()
         await heinzel.connect()
         await heinzel.chat("erster turn")
         _, ctx = await heinzel._run_pipeline("zweiter turn", None)

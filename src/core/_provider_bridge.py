@@ -1,8 +1,8 @@
-"""_provider_bridge — LLM-Provider-Aufruf und Message-Bau fuer BaseHeinzel.
+"""_provider_bridge — LLM-Provider-Aufruf und Message-Bau fuer Runner.
 
 Package-intern: nicht in __init__.py exportiert.
 
-Funktionen nehmen heinzel: BaseHeinzel als ersten Parameter (Option C).
+Funktionen nehmen runner: Runner als ersten Parameter.
 TYPE_CHECKING-Guard verhindert zirkulaeren Import zur Runtime.
 """
 
@@ -15,7 +15,7 @@ from .exceptions import ContextLengthExceededError
 from .models import HookPoint, PipelineContext
 
 if TYPE_CHECKING:
-    from .base import BaseHeinzel
+    from .runner import Runner
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def build_messages_from_ctx(ctx: PipelineContext) -> list[dict[str, Any]]:
     return [current]
 
 
-async def call_provider(heinzel: BaseHeinzel, ctx: PipelineContext) -> PipelineContext:
+async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContext:
     """LLM aufrufen und Response in neuen Context-Snapshot schreiben.
 
     Setzt loop_done=True als Fallback — kein LoopControl-AddOn vorhanden.

@@ -43,14 +43,14 @@ import yaml
 
 # Core — einzige externe Abhaengigkeit
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from core import BaseHeinzel, HttpLLMProvider
+from core import Runner, HttpLLMProvider
 
 
 # =============================================================================
 # Kommando-Handler
 # =============================================================================
 
-def handle_history(heinzel: BaseHeinzel) -> None:
+def handle_history(heinzel: Runner) -> None:
     """!history — Dialoglog der aktuellen Session ausgeben."""
     log_path = heinzel._dialog_log.log_path
     if log_path is None or not log_path.exists():
@@ -61,7 +61,7 @@ def handle_history(heinzel: BaseHeinzel) -> None:
     print("--- Ende ---\n")
 
 
-async def handle_memory(heinzel: BaseHeinzel) -> None:
+async def handle_memory(heinzel: Runner) -> None:
     """!memory — Working Memory Status anzeigen."""
     session = heinzel.session_manager.active_session
     if session is None:
@@ -87,7 +87,7 @@ async def handle_memory(heinzel: BaseHeinzel) -> None:
     print("--- Ende ---\n")
 
 
-async def handle_session(heinzel: BaseHeinzel) -> None:
+async def handle_session(heinzel: Runner) -> None:
     """!session — aktive Session anzeigen."""
     session = heinzel.session_manager.active_session
     if session is None:
@@ -102,7 +102,7 @@ async def handle_session(heinzel: BaseHeinzel) -> None:
     print("--- Ende ---\n")
 
 
-async def memory_status(heinzel: BaseHeinzel) -> str:
+async def memory_status(heinzel: Runner) -> str:
     """Einzeilige Kontext-Anzeige fuer nach jeder Antwort."""
     session = heinzel.session_manager.active_session
     if session is None:
@@ -121,11 +121,11 @@ async def memory_status(heinzel: BaseHeinzel) -> str:
 # REPL
 # =============================================================================
 
-async def run_repl(heinzel: BaseHeinzel, provider_url: str) -> None:
+async def run_repl(heinzel: Runner, provider_url: str) -> None:
     """Hauptschleife. Laeuft bis !quit."""
     log_path = heinzel._dialog_log.log_path
     print(f"\n{'='*60}")
-    print(f"  Heinzel: {heinzel.name}  ({heinzel.heinzel_id[:8]}...)")
+    print(f"  Heinzel: {heinzel.name}  ({heinzel.agent_id[:8]}...)")
     print(f"  Provider: {provider_url}")
     print(f"  Log: {log_path or '(kein Log)'}")
     print(f"  Kommandos: !quit  !history  !memory  !session")
@@ -240,10 +240,10 @@ def main() -> None:
     heinzel_id: str | None = cfg["heinzel"].get("id", None)
 
     provider = HttpLLMProvider(name="cli-provider", base_url=provider_url, model=model)
-    heinzel = BaseHeinzel(
+    heinzel = Runner(
         provider=provider,
         name=heinzel_name,
-        heinzel_id=heinzel_id,
+        agent_id=heinzel_id,
         config=cfg,
     )
 

@@ -6,7 +6,7 @@ Testet:
   - ProviderRegistry: load_config, check_all, get_active, switch_to, fallback, reload_config
   - ProviderRegistry: ConfigError bei fehlender/leerer Config
   - ProviderRegistry: Config-Pfad-Aufloesung (Konstruktor, Env, Default)
-  - BaseHeinzel: set_provider mit health-Check + turn-safem swap
+  - Runner: set_provider mit health-Check + turn-safem swap
 
 Kein echter Server — unittest.mock fuer alle HTTP-Calls.
 """
@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from core.base import BaseHeinzel, LLMProvider
+from core.runner import Runner, LLMProvider
 from core.exceptions import ConfigError, ProviderError
 from core.provider import HttpLLMProvider
 from core.provider_registry import ProviderRegistry
@@ -461,7 +461,7 @@ async def test_registry_reload_keeps_active_provider(registry: ProviderRegistry)
 
 
 # =============================================================================
-# BaseHeinzel — set_provider
+# Runner — set_provider
 # =============================================================================
 
 class _MockProvider(LLMProvider):
@@ -484,7 +484,7 @@ class _MockProvider(LLMProvider):
 async def test_set_provider_ok() -> None:
     old = _MockProvider("old")
     new = _MockProvider("new")
-    heinzel = BaseHeinzel(provider=old, name="test")
+    heinzel = Runner(provider=old, name="test")
 
     ok = await heinzel.set_provider(new)
 
@@ -496,7 +496,7 @@ async def test_set_provider_ok() -> None:
 async def test_set_provider_rejects_unhealthy() -> None:
     old = _MockProvider("old")
     bad = _MockProvider("bad", healthy=False)
-    heinzel = BaseHeinzel(provider=old, name="test")
+    heinzel = Runner(provider=old, name="test")
 
     ok = await heinzel.set_provider(bad)
 
@@ -515,7 +515,7 @@ async def test_set_provider_turn_safe() -> None:
 
     slow = SlowProvider("slow")
     new = _MockProvider("new")
-    heinzel = BaseHeinzel(provider=slow, name="test")
+    heinzel = Runner(provider=slow, name="test")
 
     chat_task = asyncio.create_task(heinzel.chat("test"))
     await asyncio.sleep(0.01)  # warten bis _in_turn gesetzt

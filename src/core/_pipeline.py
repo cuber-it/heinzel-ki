@@ -1,8 +1,8 @@
-"""_pipeline — Pipeline-Logik fuer BaseHeinzel.
+"""_pipeline — Pipeline-Logik fuer Runner.
 
 Package-intern: nicht in __init__.py exportiert.
 
-Funktionen nehmen heinzel: BaseHeinzel als ersten Parameter (Option C).
+Funktionen nehmen runner: Runner als ersten Parameter.
 TYPE_CHECKING-Guard verhindert zirkulaeren Import zur Runtime.
 
 Oeffentliche Helfer fuer base.py:
@@ -23,7 +23,7 @@ from .session import Turn, WorkingMemory
 from ._provider_bridge import call_provider
 
 if TYPE_CHECKING:
-    from .base import BaseHeinzel
+    from .runner import Runner
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 async def run_pre_phases(
-    heinzel: BaseHeinzel,
+    heinzel: Runner,
     message: str,
     session_id: str | None,
 ) -> tuple[str, WorkingMemory, PipelineContext, ContextHistory, bool]:
@@ -50,7 +50,7 @@ async def run_pre_phases(
         raw_input=message,
         parsed_input=message,
         session_id=sid,
-        heinzel_id=heinzel._heinzel_id,
+        agent_id=heinzel._agent_id,
         phase=HookPoint.ON_SESSION_START,
     )
     ctx_history.push(ctx)
@@ -98,7 +98,7 @@ async def run_pre_phases(
 
 
 async def run_post_phases(
-    heinzel: BaseHeinzel,
+    heinzel: Runner,
     ctx: PipelineContext,
     ctx_history: ContextHistory,
     sid: str,
@@ -149,7 +149,7 @@ async def run_post_phases(
 
 
 async def run_pipeline(
-    heinzel: BaseHeinzel,
+    heinzel: Runner,
     message: str,
     session_id: str | None,
 ) -> tuple[ContextHistory, PipelineContext]:
@@ -203,7 +203,7 @@ async def run_pipeline(
 
 
 async def phase(
-    heinzel: BaseHeinzel,
+    heinzel: Runner,
     hook: HookPoint,
     ctx: PipelineContext,
     ctx_history: ContextHistory,
@@ -215,7 +215,7 @@ async def phase(
 
 
 async def dispatch_and_apply(
-    heinzel: BaseHeinzel,
+    heinzel: Runner,
     hook: HookPoint,
     ctx: PipelineContext,
     ctx_history: ContextHistory,

@@ -19,7 +19,7 @@ class Fact(BaseModel, frozen=True):
 
     key: str
     value: str
-    heinzel_id: str | None = None
+    agent_id: str | None = None
 
 
 class Skill(BaseModel, frozen=True):

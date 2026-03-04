@@ -2,7 +2,7 @@
 
 Austauschbare Strategien fuer den Reasoning-Loop des Heinzel.
 
-Der Core (BaseHeinzel) stellt Pipeline + ContextHistory.
+Der Core (Runner) stellt Pipeline + ContextHistory.
 Die ReasoningStrategy entscheidet WIE auf eine Anfrage geantwortet wird:
 direkt (PassthroughStrategy), mit Tool-Loop, mit Reflection etc.
 
@@ -323,8 +323,8 @@ class StrategyRegistry:
         StrategyRegistry.register(MyStrategy())
         StrategyRegistry.set_default("my_strategy")
 
-    Laufzeit-Wechsel via BaseHeinzel:
-        heinzel.set_strategy("my_strategy")
+    Laufzeit-Wechsel via Runner:
+        runner.set_strategy("my_strategy")
         heinzel.set_strategy(MyStrategy())  # registriert + setzt
     """
 

@@ -30,7 +30,7 @@ def make_turn(raw_input: str = "Hallo", final_response: str = "Hi") -> Turn:
 
 
 def make_session(turn_count: int = 5) -> Session:
-    return Session(heinzel_id="h1", turn_count=turn_count)
+    return Session(agent_id="h1", turn_count=turn_count)
 
 
 BUDGET = ResourceBudget(max_tokens=100_000)

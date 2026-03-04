@@ -30,7 +30,7 @@ from .config import (
     get_config,
     reset_config,
 )
-from .base import BaseHeinzel, LLMProvider
+from .runner import Runner, LLMProvider
 from .exceptions import (
     ContextLengthExceededError,
     HeinzelError,
@@ -73,7 +73,7 @@ __all__ = [
     "reset_config",
     # Core
     "AddOnRouter",
-    "BaseHeinzel",
+    "Runner",
     "HttpLLMProvider",
     "LLMProvider",
     "ProviderRegistry",

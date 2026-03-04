@@ -1,4 +1,4 @@
-"""Tests für BaseHeinzel + Pipeline Engine — HNZ-002-0006.
+"""Tests fuer Runner + Pipeline Engine — HNZ-002-0006.
 
 Testet:
   - Lifecycle (connect/disconnect)
@@ -17,7 +17,7 @@ import pytest
 from typing import Any, AsyncGenerator
 from unittest.mock import AsyncMock
 
-from core.base import BaseHeinzel, LLMProvider
+from core.runner import Runner, LLMProvider
 from core.addon import AddOn
 from core.models import AddOnResult, ContextHistory, HookPoint, PipelineContext
 
@@ -118,9 +118,9 @@ class LoopControlAddOn(AddOn):
         return AddOnResult(modified_ctx=ctx.evolve(loop_done=loop_done))
 
 
-def make_heinzel(response="test response", **kwargs) -> tuple[BaseHeinzel, MockProvider]:
+def make_runner(response="test response", **kwargs) -> tuple[Runner, MockProvider]:
     provider = MockProvider(response)
-    heinzel = BaseHeinzel(provider=provider, name="test-heinzel", **kwargs)
+    heinzel = Runner(provider=provider, name="test-heinzel", **kwargs)
     return heinzel, provider
 
 
@@ -133,7 +133,7 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     async def test_connect_ruft_on_attach_auf(self):
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         addon = RecordingAddOn()
         heinzel.register_addon(addon, hooks={HookPoint.ON_INPUT})
         await heinzel.connect()
@@ -141,7 +141,7 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     async def test_disconnect_ruft_on_detach_auf(self):
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         addon = RecordingAddOn()
         heinzel.register_addon(addon, hooks={HookPoint.ON_INPUT})
         await heinzel.connect()
@@ -150,23 +150,23 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     async def test_properties_vorhanden(self):
-        heinzel, provider = make_heinzel()
+        heinzel, provider = make_runner()
         assert heinzel.name == "test-heinzel"
-        assert heinzel.heinzel_id is not None
+        assert heinzel.agent_id is not None
         assert heinzel.provider is provider
         assert heinzel.addon_router is not None
         assert isinstance(heinzel.config, dict)
 
     @pytest.mark.asyncio
-    async def test_heinzel_id_wird_generiert(self):
-        h1, _ = make_heinzel()
-        h2, _ = make_heinzel()
-        assert h1.heinzel_id != h2.heinzel_id
+    async def test_agent_id_wird_generiert(self):
+        h1, _ = make_runner()
+        h2, _ = make_runner()
+        assert h1.agent_id != h2.agent_id
 
     @pytest.mark.asyncio
-    async def test_explizite_heinzel_id(self):
-        heinzel, _ = make_heinzel(heinzel_id="test-id-42")
-        assert heinzel.heinzel_id == "test-id-42"
+    async def test_explizite_agent_id(self):
+        heinzel, _ = make_runner(agent_id="test-id-42")
+        assert heinzel.agent_id == "test-id-42"
 
 
 # =============================================================================
@@ -179,7 +179,7 @@ class TestPipelineSequenz:
     @pytest.mark.asyncio
     async def test_jede_phase_erzeugt_neuen_snapshot(self):
         """Kernprinzip: immutable context — jede Phase neuer snapshot_id."""
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
 
         # Direkt _run_pipeline aufrufen um history zu inspizieren
@@ -193,7 +193,7 @@ class TestPipelineSequenz:
     @pytest.mark.asyncio
     async def test_pipeline_phasen_reihenfolge(self):
         """Kritische Phasen müssen in der richtigen Reihenfolge auftreten."""
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("test", None)
 
@@ -214,7 +214,7 @@ class TestPipelineSequenz:
 
     @pytest.mark.asyncio
     async def test_memory_miss_wenn_keine_results(self):
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("test", None)
 
@@ -225,7 +225,7 @@ class TestPipelineSequenz:
 
     @pytest.mark.asyncio
     async def test_at_phase_findet_snapshot(self):
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("Hallo", None)
 
@@ -235,7 +235,7 @@ class TestPipelineSequenz:
 
     @pytest.mark.asyncio
     async def test_to_reasoning_trace_aufrufbar(self):
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("test", None)
 
@@ -254,7 +254,7 @@ class TestLoop:
     @pytest.mark.asyncio
     async def test_loop_done_fallback_ein_durchlauf(self):
         """Ohne LoopControl-AddOn: Loop endet nach genau einem Durchlauf."""
-        heinzel, provider = make_heinzel()
+        heinzel, provider = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("test", None)
 
@@ -265,7 +265,7 @@ class TestLoop:
     @pytest.mark.asyncio
     async def test_loop_control_addon_steuert_iterationen(self):
         """Mit LoopControl-AddOn: exakt 3 LLM-Calls."""
-        heinzel, provider = make_heinzel()
+        heinzel, provider = make_runner()
         loop_addon = LoopControlAddOn(max_iterations=3)
         heinzel.register_addon(loop_addon, hooks={HookPoint.ON_LLM_RESPONSE})
         await heinzel.connect()
@@ -287,7 +287,7 @@ class TestChatAPI:
     @pytest.mark.asyncio
     async def test_nackter_heinzel_gibt_string_zurueck(self):
         """Nackter Heinzel (0 AddOns) gibt String zurück."""
-        heinzel, _ = make_heinzel("Hallo Welt")
+        heinzel, _ = make_runner("Hallo Welt")
         await heinzel.connect()
         response = await heinzel.chat("test")
         assert isinstance(response, str)
@@ -296,7 +296,7 @@ class TestChatAPI:
     @pytest.mark.asyncio
     async def test_chat_gibt_nie_exception(self):
         """chat() fängt alle Exceptions und gibt String zurück."""
-        heinzel = BaseHeinzel(provider=BrokenProvider(), name="broken")
+        heinzel = Runner(provider=BrokenProvider(), name="broken")
         await heinzel.connect()
         response = await heinzel.chat("test")
         assert isinstance(response, str)
@@ -305,7 +305,7 @@ class TestChatAPI:
     @pytest.mark.asyncio
     async def test_fallback_session_id(self):
         """Ohne session_id: wird eine UUID generiert."""
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("test", None)
 
@@ -315,7 +315,7 @@ class TestChatAPI:
 
     @pytest.mark.asyncio
     async def test_explizite_session_id_wird_behalten(self):
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("test", "meine-session-123")
 
@@ -324,7 +324,7 @@ class TestChatAPI:
     @pytest.mark.asyncio
     async def test_fallback_parsed_input(self):
         """Ohne ParserAddOn: parsed_input == raw_input."""
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         await heinzel.connect()
         history, _ = await heinzel._run_pipeline("original message", None)
 
@@ -343,7 +343,7 @@ class TestHalt:
     @pytest.mark.asyncio
     async def test_halt_bricht_pipeline_ab(self):
         """halt=True in AddOnResult stoppt die Pipeline."""
-        heinzel, provider = make_heinzel()
+        heinzel, provider = make_runner()
         halt_addon = HaltAddOn()
         heinzel.register_addon(halt_addon, hooks={HookPoint.ON_INPUT})
         await heinzel.connect()
@@ -356,7 +356,7 @@ class TestHalt:
     @pytest.mark.asyncio
     async def test_halt_pipeline_gibt_trotzdem_string(self):
         """Auch nach halt: chat() gibt String zurück."""
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         halt_addon = HaltAddOn()
         heinzel.register_addon(halt_addon, hooks={HookPoint.ON_INPUT})
         await heinzel.connect()
@@ -375,7 +375,7 @@ class TestAddOnIntegration:
     @pytest.mark.asyncio
     async def test_addon_kann_context_modifizieren(self):
         """AddOn via modified_ctx: system_prompt wird übernommen."""
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         mutator = ContextMutatorAddOn()
         heinzel.register_addon(mutator, hooks={HookPoint.ON_CONTEXT_BUILD})
         await heinzel.connect()
@@ -398,7 +398,7 @@ class TestAddOnIntegration:
                 received_histories.append(history)
                 return AddOnResult(modified_ctx=ctx)
 
-        heinzel, _ = make_heinzel()
+        heinzel, _ = make_runner()
         capture_addon = HistoryCapturingAddOn()
         heinzel.register_addon(capture_addon, hooks={HookPoint.ON_INPUT})
         await heinzel.connect()
@@ -420,7 +420,7 @@ class TestChatStream:
     @pytest.mark.asyncio
     async def test_stream_liefert_chunks(self):
         """chat_stream() liefert die Provider-Chunks direkt."""
-        heinzel, _ = make_heinzel("hallo welt foo")
+        heinzel, _ = make_runner("hallo welt foo")
         await heinzel.connect()
         chunks = []
         async for chunk in heinzel.chat_stream("test"):
@@ -441,7 +441,7 @@ class TestChatStream:
                 received_system_prompts.append(system_prompt)
                 yield "chunk"
 
-        heinzel = BaseHeinzel(provider=CaptureProvider(), name="test")
+        heinzel = Runner(provider=CaptureProvider(), name="test")
         heinzel.register_addon(mutator, hooks={HookPoint.ON_CONTEXT_BUILD})
         await heinzel.connect()
 
@@ -453,7 +453,7 @@ class TestChatStream:
     @pytest.mark.asyncio
     async def test_stream_gibt_nie_exception(self):
         """chat_stream() liefert Fehler-Chunk statt Exception."""
-        heinzel = BaseHeinzel(provider=BrokenProvider(), name="broken")
+        heinzel = Runner(provider=BrokenProvider(), name="broken")
         await heinzel.connect()
         chunks = []
         async for chunk in heinzel.chat_stream("test"):
@@ -464,7 +464,7 @@ class TestChatStream:
     @pytest.mark.asyncio
     async def test_stream_session_id_fallback(self):
         """Ohne session_id: UUID wird generiert."""
-        heinzel, _ = make_heinzel("x")
+        heinzel, _ = make_runner("x")
         await heinzel.connect()
         # Kein Fehler = genug für diesen Test
         async for _ in heinzel.chat_stream("test"):
@@ -474,14 +474,14 @@ class TestChatStream:
     async def test_config_path_parameter_vorhanden(self):
         """config_path=None ist akzeptierter Parameter."""
         provider = MockProvider()
-        h = BaseHeinzel(provider=provider, name="test", config_path=None)
+        h = Runner(provider=provider, name="test", config_path=None)
         assert h.config == {}
 
     @pytest.mark.asyncio
     async def test_config_dict_hat_vorrang(self):
         """Explizites config-dict wird direkt verwendet."""
         provider = MockProvider()
-        h = BaseHeinzel(provider=provider, name="test", config={"key": "val"})
+        h = Runner(provider=provider, name="test", config={"key": "val"})
         assert h.config == {"key": "val"}
 
 
@@ -495,7 +495,7 @@ class TestDialogLogger:
     @pytest.mark.asyncio
     async def test_log_datei_wird_angelegt(self, tmp_path):
         provider = MockProvider("antwort")
-        h = BaseHeinzel(
+        h = Runner(
             provider=provider, name="test",
             config={"logging": {"log_dir": str(tmp_path)}}
         )
@@ -509,7 +509,7 @@ class TestDialogLogger:
     @pytest.mark.asyncio
     async def test_log_enthaelt_user_und_heinzel(self, tmp_path):
         provider = MockProvider("test antwort")
-        h = BaseHeinzel(
+        h = Runner(
             provider=provider, name="test",
             config={"logging": {"log_dir": str(tmp_path)}}
         )
@@ -524,7 +524,7 @@ class TestDialogLogger:
     @pytest.mark.asyncio
     async def test_log_stream_enthaelt_dialog(self, tmp_path):
         provider = MockProvider("chunk1 chunk2")
-        h = BaseHeinzel(
+        h = Runner(
             provider=provider, name="test",
             config={"logging": {"log_dir": str(tmp_path)}}
         )
@@ -540,7 +540,7 @@ class TestDialogLogger:
     @pytest.mark.asyncio
     async def test_log_hat_session_marker(self, tmp_path):
         provider = MockProvider("x")
-        h = BaseHeinzel(
+        h = Runner(
             provider=provider, name="test",
             config={"logging": {"log_dir": str(tmp_path)}}
         )
@@ -555,9 +555,9 @@ class TestDialogLogger:
     @pytest.mark.asyncio
     async def test_jeder_heinzel_hat_eigene_logdatei(self, tmp_path):
         p = MockProvider("x")
-        h1 = BaseHeinzel(provider=p, name="h1", heinzel_id="id-001",
+        h1 = Runner(provider=p, name="h1", agent_id="id-001",
                          config={"logging": {"log_dir": str(tmp_path)}})
-        h2 = BaseHeinzel(provider=p, name="h2", heinzel_id="id-002",
+        h2 = Runner(provider=p, name="h2", agent_id="id-002",
                          config={"logging": {"log_dir": str(tmp_path)}})
         await h1.connect()
         await h2.connect()

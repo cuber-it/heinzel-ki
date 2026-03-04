@@ -9,7 +9,7 @@ nutzen und seine eigenen Gedanken reflektieren soll.
 
 Heinzel trennt diese Verantwortlichkeiten:
 
-- **BaseHeinzel** stellt Pipeline + ContextHistory
+- **Runner** stellt Pipeline + ContextHistory
 - **ReasoningStrategy** entscheidet WIE auf eine Anfrage geantwortet wird
 
 Der entscheidende Unterschied zu anderen Systemen: Die Strategie sieht
@@ -169,8 +169,8 @@ StrategyRegistry.register(MyStrategy())
 StrategyRegistry.set_default("my_strategy")
 
 # Oder: per Heinzel-Instanz setzen
-heinzel.set_strategy("my_strategy")
-heinzel.set_strategy(MyStrategy())  # registriert + setzt in einem Schritt
+runner.set_strategy("my_strategy")
+runner.set_strategy(MyStrategy())  # registriert + setzt in einem Schritt
 ```
 
 ---
@@ -295,12 +295,12 @@ class MyStrategyAddOn(AddOn):
 
 
 # Registrierung beim Heinzel
-heinzel.register_addon(
+runner.register_addon(
     MyStrategyAddOn(),
     hooks={HookPoint.ON_ATTACH},
 )
 # Nach connect():
-heinzel.set_strategy("my_strategy")
+runner.set_strategy("my_strategy")
 ```
 
 ---

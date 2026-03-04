@@ -1,15 +1,15 @@
-"""BaseHeinzel — minimaler Orchestrator fuer das Heinzel-System.
+"""runner — agnostischer Laufzeit-Orchestrator.
 
 Designprinzip:
-    BaseHeinzel kennt: LLM-Provider, AddOnRouter, Pipeline-Loop,
-                       PipelineContext und ContextHistory.
-    BaseHeinzel kennt NICHT: Memory, Strategy, Goals, Estimator,
-                              Evaluator, Session-Logik.
+    Runner kennt: LLM-Provider, AddOnRouter, Pipeline-Loop,
+                  PipelineContext und ContextHistory.
+    Runner kennt NICHT: Memory, Strategy, Goals, Estimator,
+                        Evaluator, Session-Logik.
 
     Alles was ueber einen generischen LLM-Chatbot hinausgeht
     wird ausschliesslich via AddOns realisiert.
 
-Fallbacks fuer den nackten Heinzel (0 AddOns):
+Fallbacks ohne AddOns:
     - messages      = [{"role": "user", "content": raw_input}]
     - system_prompt = ""
     - loop_done     = True nach erstem LLM-Response
@@ -44,38 +44,39 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# BaseHeinzel
+# Runner
 # =============================================================================
 
-class BaseHeinzel:
-    """Minimaler Orchestrator: Lifecycle + Pipeline-Loop + LLM-Aufruf.
+class Runner:
+    """Agnostischer Laufzeit-Orchestrator: Lifecycle + Pipeline-Loop + LLM-Aufruf.
 
     Alles darueber hinaus wird via AddOns realisiert.
+    Kein Domänenwissen, kein Name, kein Charakter — rein strukturell.
 
     Verwendung:
-        heinzel = BaseHeinzel(provider=my_provider, name="test")
-        heinzel.register_addon(my_addon, hooks={HookPoint.ON_INPUT})
-        await heinzel.connect()
-        response = await heinzel.chat("Hallo!")
-        await heinzel.disconnect()
+        runner = Runner(provider=my_provider, name="test")
+        runner.register_addon(my_addon, hooks={HookPoint.ON_INPUT})
+        await runner.connect()
+        response = await runner.chat("Hallo!")
+        await runner.disconnect()
     """
 
     def __init__(
         self,
         provider: LLMProvider,
         name: str = "heinzel",
-        heinzel_id: str | None = None,
+        agent_id: str | None = None,
         config: dict[str, Any] | None = None,
         config_path: str | None = None,
     ) -> None:
         self._provider = provider
         self._name = name
-        self._heinzel_id = heinzel_id or str(uuid4())
+        self._agent_id = agent_id or str(uuid4())
         self._config: dict[str, Any] = self._load_config(config, config_path)
         self._router = AddOnRouter()
         self._addons: list[AddOn] = []   # Reihenfolge fuer Lifecycle
         self._connected = False
-        self._dialog_log = _DialogLogger(self._heinzel_id, self._config)
+        self._dialog_log = _DialogLogger(self._agent_id, self._config)
         self._pending_provider: LLMProvider | None = None   # turn-safe swap
         self._in_turn: bool = False                         # laufender LLM-Call
         self._reasoning_strategy_name: str = "passthrough"  # Standard-Reasoning
@@ -96,8 +97,8 @@ class BaseHeinzel:
         return self._name
 
     @property
-    def heinzel_id(self) -> str:
-        return self._heinzel_id
+    def agent_id(self) -> str:
+        return self._agent_id
 
     @property
     def config(self) -> dict[str, Any]:
@@ -177,14 +178,14 @@ class BaseHeinzel:
                     session_id,
                 )
                 session = await self._session_manager.create_session(
-                    self._heinzel_id, session_id=session_id
+                    self._agent_id, session_id=session_id
                 )
         else:
             active = self._session_manager.active_session
             if active is not None:
                 session = active
             else:
-                session = await self._session_manager.create_session(self._heinzel_id)
+                session = await self._session_manager.create_session(self._agent_id)
 
         working_memory = await self._session_manager.get_working_memory(session.id)
         return session.id, working_memory
@@ -243,7 +244,7 @@ class BaseHeinzel:
                 logger.error("on_attach fehlgeschlagen fuer %s: %s", addon, exc)
                 raise AddOnError(f"on_attach fehlgeschlagen: {exc}") from exc
         self._connected = True
-        logger.info("BaseHeinzel '%s' verbunden (%d AddOns)", self._name, len(self._addons))
+        logger.info("Runner '%s' verbunden (%d AddOns)", self._name, len(self._addons))
 
     async def disconnect(self) -> None:
         """Alle AddOns in umgekehrter Reihenfolge stoppen."""
@@ -254,7 +255,7 @@ class BaseHeinzel:
                 logger.error("on_detach fehlgeschlagen fuer %s: %s", addon, exc)
         self._connected = False
         self._dialog_log.close()
-        logger.info("BaseHeinzel '%s' getrennt", self._name)
+        logger.info("Runner '%s' getrennt", self._name)
 
     # -------------------------------------------------------------------------
     # Public API
@@ -455,7 +456,7 @@ class BaseHeinzel:
             # Rolling Session via SessionManager
             await self._session_manager.end_session(session_id)
             new_session = await self._session_manager.create_session(
-                heinzel_id=self._heinzel_id,
+                agent_id=self._agent_id,
                 user_id=session.user_id,
             )
             # Handover in neue Session-Metadata
