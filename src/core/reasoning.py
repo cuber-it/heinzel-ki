@@ -539,54 +539,35 @@ class DeepReasoningStrategy(ReasoningStrategy):
 
     _PHASES = ["decompose", "explore", "reason", "critique", "synthesize"]
 
-    _PHASE_PROMPTS = {
+    # Kurze, gezielte user-Messages — keine Trace-Dumps.
+    # Das Modell sieht seine eigenen Antworten in der Message-History.
+    _PHASE_QUESTIONS = {
         "decompose": (
-            "\n\n[REASONING: PROBLEM-ANALYSE]\n"
-            "Analysiere diese Anfrage grundlich bevor du antwortest:\n"
-            "- Was genau wird gefragt? Was ist der Kern der Anfrage?\n"
-            "- Welche Teilprobleme stecken darin?\n"
-            "- Welche Annahmen werden gemacht? Welche sind moeglicherweise falsch?\n"
-            "- Was ist der Kontext? Was fehlt noch?\n"
-            "Denke laut und vollstaendig. Kein voreiliges Antworten."
+            "Analysiere die Anfrage bevor du antwortest: "
+            "Was ist der Kern? Welche Teilprobleme stecken drin? "
+            "Welche Annahmen werden gemacht — und welche koennen falsch sein? "
+            "Nur denken, noch nicht antworten."
         ),
         "explore": (
-            "\n\n[REASONING: LOESUNGSRAUM]\n"
-            "Bisheriger Reasoning-Trace:\n{trace}\n\n"
-            "Erkunde jetzt den Loesungsraum:\n"
-            "- Welche Ansaetze gibt es? Liste alle sinnvollen auf.\n"
-            "- Was spricht fuer/gegen jeden Ansatz?\n"
-            "- Welcher Ansatz ist am vielversprechendsten — und warum?\n"
-            "- Welche Risiken oder Fallstricke gibt es?\n"
-            "Sei gruendlich. Schreibe deinen Denkprozess vollstaendig auf."
+            "Erkunde den Loesungsraum: Welche Ansaetze gibt es? "
+            "Was spricht fuer/gegen jeden? Welcher ist am vielversprechendsten und warum? "
+            "Wo sind die groessten Risiken?"
         ),
         "reason": (
-            "\n\n[REASONING: DURCHARBEITEN — Schritt {step}]\n"
-            "Bisheriger Reasoning-Trace:\n{trace}\n\n"
-            "Arbeite jetzt den vielversprechendsten Ansatz durch:\n"
-            "- Vertiefe die Analyse wo noetig.\n"
-            "- Loesung Schritt fuer Schritt entwickeln.\n"
-            "- Auf Luecken oder Widerspruche im bisherigen Reasoning achten.\n"
-            "- Neue Erkenntnisse explizit benennen.\n"
-            "Schreibe jeden Schritt deines Denkens auf."
+            "Arbeite den besten Ansatz jetzt konkret durch. "
+            "Schritt fuer Schritt. Benenne neue Erkenntnisse explizit. "
+            "Weise auf Luecken oder Widerspruche hin wenn du sie siehst."
         ),
         "critique": (
-            "\n\n[REASONING: SELBSTKRITIK]\n"
-            "Bisheriger Reasoning-Trace:\n{trace}\n\n"
-            "Pruefe dein bisheriges Reasoning kritisch:\n"
-            "- Wo koennte das Reasoning fehlerhaft oder unvollstaendig sein?\n"
-            "- Welche Gegenargumente oder Randfaelle wurden ignoriert?\n"
-            "- Ist die Schlussfolgerung wirklich gut begruendet?\n"
-            "- Was wuerde ein kritischer Experte bemaengeln?\n"
-            "Sei ehrlich und streng. Gib am Ende eine Konfidenz 0-100 an."
+            "Pruefe dein bisheriges Reasoning kritisch: "
+            "Wo koennte es fehlerhaft oder unvollstaendig sein? "
+            "Was wuerde ein Experte bemaengeln? "
+            "Sei streng. Gib am Ende eine Konfidenz 0-100 an."
         ),
         "synthesize": (
-            "\n\n[REASONING: FINALE SYNTHESE]\n"
-            "Vollstaendiger Reasoning-Trace:\n{trace}\n\n"
-            "Formuliere jetzt die finale Antwort:\n"
-            "- Basiere dich vollstaendig auf dem Reasoning-Trace.\n"
-            "- Klar, praezise, vollstaendig — kein weiteres Denken mehr.\n"
-            "- Erkenne Unsicherheiten explizit an wo sie bestehen.\n"
-            "- Antworte direkt auf die urspruengliche Frage."
+            "Formuliere jetzt die finale Antwort fuer den Nutzer. "
+            "Klar und vollstaendig. Keine weiteren Ueberlegungen mehr. "
+            "Erkenne Unsicherheiten explizit an wo sie bestehen."
         ),
     }
 
@@ -690,14 +671,14 @@ class DeepReasoningStrategy(ReasoningStrategy):
         ctx: PipelineContext,
         history: ContextHistory,
     ) -> PipelineContext:
-        """Reasoning-Metadaten initialisieren."""
-        return self._update_meta(
-            ctx,
-            trace="",
-            phase="decompose",
-            confidence=0.0,
-            budget_used=0,
-        )
+        """Reasoning-Metadaten + Message-History initialisieren."""
+        ctx = self._update_meta(ctx, trace="", phase="decompose", confidence=0.0, budget_used=0)
+        # Erste Phase-Frage als user-Message vorbereiten
+        first_question = self._PHASE_QUESTIONS["decompose"]
+        return ctx.evolve(metadata={
+            **ctx.metadata,
+            "hnz_reasoning_messages": [{"role": "user", "content": first_question}],
+        })
 
     async def should_continue(
         self,
@@ -722,31 +703,20 @@ class DeepReasoningStrategy(ReasoningStrategy):
         ctx: PipelineContext,
         history: ContextHistory,
     ) -> StepPlan:
-        """Naechste Phase bestimmen und Prompt aufbauen."""
+        """Naechste Phase bestimmen. Kein Prompt-Dump — Phase-Frage ist in hnz_reasoning_messages."""
         m = self._meta(ctx)
-        budget = m["budget_used"]
         phase = m["phase"]
-        trace = m["trace"]
+        budget = m["budget_used"]
 
-        # Nach Critique mit hoher Konfidenz oder Budget erschoepft: Synthese
-        if phase == "critique" or budget >= self._max_iterations:
-            prompt = self._PHASE_PROMPTS["synthesize"].format(trace=trace)
+        if phase == "synthesize" or budget >= self._max_iterations:
             return StepPlan(
                 next_action="respond",
-                focus="Finale Antwort auf Basis des vollstaendigen Reasoning-Traces.",
-                prompt_addition=prompt,
+                focus="Finale Synthese — Antwort fuer den Nutzer.",
             )
-
-        # Naechste Phase bestimmen
-        next_phase = self._phase_for_iteration(budget)
-        step = max(0, budget - 1)  # fuer "reason"-Nummerierung
-        prompt_template = self._PHASE_PROMPTS.get(next_phase, self._PHASE_PROMPTS["reason"])
-        prompt = prompt_template.format(trace=trace, step=step)
 
         return StepPlan(
             next_action="think",
-            focus=f"Reasoning-Phase: {next_phase} (Schritt {budget + 1}/{self._max_iterations})",
-            prompt_addition=prompt,
+            focus=f"Reasoning-Phase: {phase} (Schritt {budget + 1}/{self._max_iterations})",
         )
 
     async def reflect(
@@ -754,47 +724,42 @@ class DeepReasoningStrategy(ReasoningStrategy):
         ctx: PipelineContext,
         history: ContextHistory,
     ) -> tuple[Reflection, PipelineContext]:
-        """Reasoning-Schritt bewerten und Trace akkumulieren."""
+        """Phase-Antwort in Message-History schreiben, naechste Phase-Frage anhaengen."""
         m = self._meta(ctx)
         response = ctx.response or ""
         phase = m["phase"]
         budget = m["budget_used"]
 
-        # Trace akkumulieren
-        phase_header = f"\n{'='*40}\n[{phase.upper()} — Schritt {budget + 1}]\n{'='*40}\n"
-        new_trace = m["trace"] + phase_header + response
-
-        # Konfidenz: aus Selbstkritik extrahieren, sonst schrittweise aufbauen
+        # Konfidenz bestimmen
         if phase == "critique":
             confidence = self._extract_confidence(response)
         else:
-            # Konfidenz steigt mit Budget-Verbrauch
             confidence = min(0.4 + (budget * 0.15), 0.82)
 
-        # Naechste Phase bestimmen
+        # Naechste Phase
         next_budget = budget + 1
         if phase == "critique" or next_budget >= self._max_iterations:
             next_phase = "synthesize"
         else:
             next_phase = self._phase_for_iteration(next_budget)
 
-        ctx = self._update_meta(
-            ctx,
-            trace=new_trace,
-            phase=next_phase,
-            confidence=confidence,
-            budget_used=next_budget,
-        )
+        # Message-History aufbauen:
+        # 1. Phase-Antwort als assistant-Message
+        # 2. Naechste Phase-Frage als user-Message (ausser Synthese: die laeuft als finaler Stream)
+        msgs = list(ctx.metadata.get("hnz_reasoning_messages", []))
+        msgs.append({"role": "assistant", "content": response})
+        if next_phase != "synthesize":
+            msgs.append({"role": "user", "content": self._PHASE_QUESTIONS[next_phase]})
+        else:
+            msgs.append({"role": "user", "content": self._PHASE_QUESTIONS["synthesize"]})
+
+        ctx = self._update_meta(ctx, phase=next_phase, confidence=confidence, budget_used=next_budget)
+        ctx = ctx.evolve(metadata={**ctx.metadata, "hnz_reasoning_messages": msgs})
 
         useful = len(response) > 100
         return Reflection(
             step_useful=useful,
-            insight=(
-                f"Phase '{phase}' abgeschlossen. "
-                f"Trace: {len(new_trace)} Zeichen. "
-                f"Konfidenz: {confidence:.0%}. "
-                f"Naechste Phase: {next_phase}."
-            ),
+            insight=f"Phase '{phase}' -> '{next_phase}'. Konfidenz: {confidence:.0%}.",
             confidence=confidence,
             suggest_adaptation=not useful,
         ), ctx

@@ -35,9 +35,16 @@ def build_messages_from_ctx(ctx: PipelineContext) -> list[dict[str, Any]]:
     current = {"role": "user", "content": ctx.parsed_input or ctx.raw_input}
     history = [{"role": m.role, "content": m.content} for m in ctx.messages] if ctx.messages else []
 
-    # Tool-Messages aus dem ReAct-Loop einbauen (tool_use + tool_result Paare)
+    # Reasoning-Messages: Gespraech zwischen Strategy-Phasen
+    # Format: [user: phase-frage, assistant: phase-antwort, user: naechste-frage, ...]
+    reasoning_messages: list[dict] = ctx.metadata.get("hnz_reasoning_messages", [])
+
+    # Tool-Messages aus dem ReAct-Loop (tool_use + tool_result Paare)
     tool_messages: list[dict] = ctx.metadata.get("hnz_tool_messages", [])
 
+    if reasoning_messages:
+        # Aufbau: [history...] + [user: original-frage] + [reasoning-dialog] + [tool-messages]
+        return history + [current] + reasoning_messages + tool_messages
     if tool_messages:
         return history + [current] + tool_messages
     return history + [current]
