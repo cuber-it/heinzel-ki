@@ -132,6 +132,14 @@ async def run_post_phases(
             await working_memory.add_turn(turn)
             await heinzel._session_manager.add_turn(sid, turn)
 
+            # Compaction-Monitor: nach jedem Turn pruefen
+            handover = await heinzel._maybe_compact(working_memory, sid)
+            if handover is not None:
+                # Rolling Session: ON_SESSION_ROLL feuern
+                ctx, _ = await phase(
+                    heinzel, HookPoint.ON_SESSION_ROLL, ctx, ctx_history
+                )
+
     return ctx
 
 

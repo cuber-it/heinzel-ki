@@ -28,10 +28,15 @@ from .exceptions import AddOnError, SessionNotFoundError
 from .models import ContextHistory, HookPoint, PipelineContext
 from .provider import LLMProvider
 from .router import AddOnRouter
+from .compaction import RollingSessionRegistry
+from .models.placeholders import HandoverContext, ResourceBudget
 from .session import SessionManager, WorkingMemory
 from .session_noop import NoopSessionManager
 from ._dialog_logger import _DialogLogger
-from ._pipeline import dispatch_and_apply, phase, run_pipeline, run_post_phases, run_pre_phases
+from ._pipeline import (
+    dispatch_and_apply, phase, run_pipeline,
+    run_post_phases, run_pre_phases,
+)
 from ._provider_bridge import build_messages_from_ctx
 
 logger = logging.getLogger(__name__)
@@ -294,6 +299,159 @@ class BaseHeinzel:
     # -------------------------------------------------------------------------
     # Subklassen-Hooks
     # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    # Compaction + Rolling Session
+    # -------------------------------------------------------------------------
+
+    def _compaction_budget(self) -> ResourceBudget:
+        """ResourceBudget aus Config oder Default."""
+        mem_cfg = self._config.get("memory", {})
+        return ResourceBudget(
+            max_tokens=int(mem_cfg.get("max_tokens", 128_000)),
+        )
+
+    async def _build_handover_summary(
+        self, turns: list, session_id: str
+    ) -> str:
+        """LLM-Call: destilliert die Session zu einem Handover-Summary.
+
+        Nutzt den aktuellen Provider direkt — kein AddOn-Dispatch,
+        kein Context-Update. Reiner destillierender Hilfs-Call.
+        """
+        if not turns:
+            return "(leere Session)"
+
+        # Turns als komprimierten Dialog aufbereiten
+        lines = []
+        for t in turns[-40:]:   # max 40 Turns als Input
+            lines.append(f"User: {t.raw_input[:200]}")
+            lines.append(f"Heinzel: {t.final_response[:200]}")
+        dialog = "\n".join(lines)
+
+        system = (
+            "Du bist ein Archiv-Assistent. Deine Aufgabe ist es, "
+            "eine Konversation in ein kompaktes Handover-Dokument "
+            "zu destillieren. Fokus: Fakten, Entscheidungen, offene Ziele, "
+            "wichtige Kontextinfo. Antworte nur mit dem "
+            "Handover-Text, kein Kommentar davor oder danach."
+        )
+        prompt = (
+            f"Handover-Dokument fuer Session "
+            f"(ID: {session_id[:8]}):\n\n{dialog}"
+        )
+
+        try:
+            from .models import Message
+            summary = ""
+            async for chunk in self._provider.stream(
+                messages=(Message(role="user", content=prompt),),
+                system_prompt=system,
+            ):
+                summary += chunk
+            return summary.strip() or "(kein Summary erhalten)"
+        except Exception as exc:
+            logger.warning("Handover-LLM-Call fehlgeschlagen: %s", exc)
+            return f"(LLM-Handover fehlgeschlagen: {exc})"
+
+    async def _maybe_compact(
+        self,
+        working_memory: WorkingMemory,
+        session_id: str,
+    ) -> HandoverContext | None:
+        """Compaction-Monitor: wird nach jedem Turn aufgerufen.
+
+        Schwellen (Config: memory.compact_threshold / memory.roll_threshold):
+            compact_threshold (default 0.80): compact() ausfuehren
+            roll_threshold    (default 0.95): Rolling Session einleiten
+
+        Gibt HandoverContext zurueck wenn gerollt wurde, sonst None.
+        Der Aufrufer feuert ON_SESSION_ROLL.
+        """
+        mem_cfg = self._config.get("memory", {})
+        compact_threshold = float(mem_cfg.get("compact_threshold", 0.80))
+        roll_threshold = float(mem_cfg.get("roll_threshold", 0.95))
+
+        budget = self._compaction_budget()
+        tokens = working_memory.estimated_tokens()
+        ratio = tokens / budget.max_tokens if budget.max_tokens else 0.0
+
+        if ratio < compact_threshold:
+            return None   # Alles gut
+
+        if ratio >= roll_threshold:
+            # Rolling Session: LLM baut Handover, dann Context-Reset
+            logger.info(
+                "Rolling Session: %.0f%% Kontext — starte Handover",
+                ratio * 100,
+            )
+            n = 9999
+            turns = await working_memory.get_recent_turns(n)
+            summary = await self._build_handover_summary(
+                turns, session_id
+            )
+
+            policy = RollingSessionRegistry.get_default()
+            from .compaction import CompactionResult
+            compaction_result = CompactionResult(
+                kept_turns=(),
+                dropped_turns=tuple(turns),
+                summary=summary,
+                tokens_before=tokens,
+                tokens_after=0,
+                tokens_saved=tokens,
+                critical_preserved=True,
+            )
+            session = self._session_manager.active_session
+            if session is None:
+                return None
+
+            handover = await policy.create_handover(
+                session, compaction_result
+            )
+            # Handover-Summary in HandoverContext eintragen
+            handover = handover.model_copy(
+                update={"summary": summary}
+            )
+
+            # Rolling Session via SessionManager
+            await self._session_manager.end_session(session_id)
+            new_session = await self._session_manager.create_session(
+                heinzel_id=self._heinzel_id,
+                user_id=session.user_id,
+            )
+            # Handover in neue Session-Metadata
+            from .session_noop import NoopSessionManager
+            sm = self._session_manager
+            if isinstance(sm, NoopSessionManager):
+                sm._sessions[new_session.id] = new_session.model_copy(
+                    update={"metadata": {"handover": handover}}
+                )
+                sm._active = sm._sessions[new_session.id]
+            # Working Memory der neuen Session mit Handover-Turn befuellen
+            new_wm = await self._session_manager.get_working_memory(
+                new_session.id)
+            from .session import Turn as _Turn
+            handover_turn = _Turn(
+                session_id=new_session.id,
+                raw_input="[Session-Handover]",
+                final_response=summary,
+            )
+            await new_wm.add_turn(handover_turn)
+
+            logger.info(
+                "Rolling Session abgeschlossen — neue Session %s",
+                new_session.id[:8],
+            )
+            return handover
+
+        # Normale Compaction
+        logger.info(
+            "Compaction: %.0f%% Kontext — kompaktiere",
+            ratio * 100,
+        )
+        await working_memory.compact()
+        return None
 
     async def on_before_chat(self, message: str) -> str:
         """Optionaler Hook vor der Pipeline. Kann message transformieren."""
