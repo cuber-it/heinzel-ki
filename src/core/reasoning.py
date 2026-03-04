@@ -531,7 +531,6 @@ class DeepReasoningStrategy(ReasoningStrategy):
       confidence_threshold: Fruehstop wenn Konfidenz >= Wert (default 0.85)
 
     Metadaten-Keys in ctx.metadata:
-      hnz_rt_trace        : akkumulierter Reasoning-Text
       hnz_rt_phase        : aktuelle Phase (decompose/explore/reason/critique/synthesize)
       hnz_rt_confidence   : Konfidenz 0.0-1.0 nach letzter Reflexion
       hnz_rt_budget_used  : verbrauchte Reasoning-Schritte
@@ -603,7 +602,6 @@ class DeepReasoningStrategy(ReasoningStrategy):
     def _meta(self, ctx: PipelineContext) -> dict:
         """Reasoning-Metadaten aus ctx.metadata holen (nie None)."""
         return {
-            "trace": ctx.metadata.get("hnz_rt_trace", ""),
             "phase": ctx.metadata.get("hnz_rt_phase", "decompose"),
             "confidence": float(ctx.metadata.get("hnz_rt_confidence", 0.0)),
             "budget_used": int(ctx.metadata.get("hnz_rt_budget_used", 0)),
@@ -612,7 +610,6 @@ class DeepReasoningStrategy(ReasoningStrategy):
     def _update_meta(
         self,
         ctx: PipelineContext,
-        trace: str | None = None,
         phase: str | None = None,
         confidence: float | None = None,
         budget_used: int | None = None,
@@ -621,7 +618,6 @@ class DeepReasoningStrategy(ReasoningStrategy):
         m = self._meta(ctx)
         new_meta = {
             **ctx.metadata,
-            "hnz_rt_trace": trace if trace is not None else m["trace"],
             "hnz_rt_phase": phase if phase is not None else m["phase"],
             "hnz_rt_confidence": confidence if confidence is not None else m["confidence"],
             "hnz_rt_budget_used": budget_used if budget_used is not None else m["budget_used"],
@@ -672,7 +668,7 @@ class DeepReasoningStrategy(ReasoningStrategy):
         history: ContextHistory,
     ) -> PipelineContext:
         """Reasoning-Metadaten + erste Phase-Frage in ctx.messages schreiben."""
-        ctx = self._update_meta(ctx, trace="", phase="decompose", confidence=0.0, budget_used=0)
+        ctx = self._update_meta(ctx, phase="decompose", confidence=0.0, budget_used=0)
         first_question = self._PHASE_QUESTIONS["decompose"]
         first_msg = Message(
             role="user",
@@ -819,7 +815,6 @@ class ReActStrategy(ReasoningStrategy):
 
     Metadaten-Keys:
         hnz_tools         : Tool-Definitionen (ans LLM geschickt)
-        hnz_tool_messages : akkumulierte tool_use/tool_result Messages
         hnz_react_steps   : Anzahl bisheriger Schritte
     """
 
@@ -866,7 +861,6 @@ class ReActStrategy(ReasoningStrategy):
             metadata={
                 **ctx.metadata,
                 "hnz_tools": self._tools,
-                "hnz_tool_messages": [],
                 "hnz_react_steps": 0,
             },
             system_prompt=(ctx.system_prompt or "") + system_addition,
@@ -903,7 +897,10 @@ class ReActStrategy(ReasoningStrategy):
     ) -> tuple[Reflection, PipelineContext]:
         """Nach jedem Schritt reflektieren."""
         steps = int(ctx.metadata.get("hnz_react_steps", 0)) + 1
-        tool_count = len(ctx.metadata.get("hnz_tool_messages", [])) // 2
+        from .models.base import MessageType  # noqa: PLC0415 — lokal um Zirkel zu vermeiden
+        tool_count = sum(
+            1 for m in ctx.messages if m.message_type == MessageType.TOOL and m.role == "user"
+        )
         return Reflection(
             step_useful=True,
             insight=f"ReAct-Schritt {steps}: {tool_count} Tool-Calls ausgefuehrt.",
@@ -930,7 +927,10 @@ class ReActStrategy(ReasoningStrategy):
         history: ContextHistory,
     ) -> StrategyMetrics:
         steps = int(ctx.metadata.get("hnz_react_steps", 0))
-        tool_count = len(ctx.metadata.get("hnz_tool_messages", [])) // 2
+        from .models.base import MessageType  # noqa: PLC0415
+        tool_count = sum(
+            1 for m in ctx.messages if m.message_type == MessageType.TOOL and m.role == "user"
+        )
         return StrategyMetrics(
             iterations=steps,
             tool_calls=tool_count,

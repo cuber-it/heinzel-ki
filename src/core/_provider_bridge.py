@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from .exceptions import ContextLengthExceededError
 from .models import HookPoint, PipelineContext
-from .models.base import Message, MessageType, ToolCall, ToolResult
+from .models.base import Message, MessageType, ToolCall
 
 if TYPE_CHECKING:
     from .runner import Runner
@@ -47,24 +47,6 @@ def _parse_tool_calls(content_blocks: list[dict[str, Any]]) -> list[ToolCall]:
                 args=block.get("input", {}),
             ))
     return calls
-
-
-def build_tool_result_message(tool_results: tuple) -> dict[str, Any]:
-    """Baut eine user-Message mit tool_result-Bloecken fuer die History."""
-    blocks = []
-    for result in tool_results:
-        block: dict[str, Any] = {
-            "type": "tool_result",
-            "tool_use_id": result.call_id,
-        }
-        if result.error:
-            block["content"] = f"[Fehler: {result.error}]"
-            block["is_error"] = True
-        else:
-            content = result.result
-            block["content"] = str(content) if not isinstance(content, str) else content
-        blocks.append(block)
-    return {"role": "user", "content": blocks}
 
 
 async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContext:

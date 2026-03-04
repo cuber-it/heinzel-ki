@@ -146,7 +146,6 @@ class ReasoningLoggerAddOn(AddOn):
             # Reasoning-Metadaten (DeepReasoningStrategy)
             "phase": meta.get("hnz_rt_phase", "?"),
             "budget_used": meta.get("hnz_rt_budget_used", 0),
-            "trace_len": len(meta.get("hnz_rt_trace", "")),
             # Confidence
             "confidence": meta.get("hnz_rt_confidence", None),
             # Reflection
