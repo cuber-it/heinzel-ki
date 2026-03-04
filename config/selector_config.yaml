@@ -1,0 +1,37 @@
+# Heinzel StrategySelector Konfiguration
+# Änderungen wirken sofort ohne Restart (hot-reload)
+
+simple_max_len: 40
+complex_min_len: 300
+
+simple_patterns:
+  - "kannst du"
+  - "bist du"
+  - "was ist"
+  - "wer ist"
+  - "hallo"
+  - "hi "
+  - "hey "
+  - "danke"
+  - "ok"
+
+complex_keywords:
+  - "analysiere"
+  - "vergleiche"
+  - "warum"
+  - "erkläre im detail"
+  - "optimiere"
+  - "architektur"
+  - "strategie"
+  - "konzept"
+  - "bewerte"
+  - "diskutiere"
+  - "pros und cons"
+  - "vor- und nachteile"
+
+strategy_map:
+  simple: passthrough
+  medium: chain_of_thought
+  complex: deep_reasoning
+
+fallback_strategy: chain_of_thought

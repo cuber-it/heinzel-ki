@@ -33,6 +33,8 @@ from .reasoning import ReasoningStrategy, StrategyRegistry
 from .models.placeholders import HandoverContext, ResourceBudget
 from .session import SessionManager, WorkingMemory
 from .session_noop import NoopSessionManager
+from .selector import StrategySelector, HybridSelector
+from .feedback_store import SqliteFeedbackStore
 from ._dialog_logger import _DialogLogger
 from ._pipeline import (
     dispatch_and_apply, phase, run_pipeline,
@@ -79,7 +81,10 @@ class Runner:
         self._dialog_log = _DialogLogger(self._agent_id, self._config)
         self._pending_provider: LLMProvider | None = None   # turn-safe swap
         self._in_turn: bool = False                         # laufender LLM-Call
-        self._reasoning_strategy_name: str = "passthrough"  # Standard-Reasoning
+        self._reasoning_strategy_name: str = "auto"  # "auto" = Selector entscheidet
+        self._strategy_selector: StrategySelector = HybridSelector(
+            feedback_store=SqliteFeedbackStore()
+        )
         _mem_cfg = self._config.get("memory", {})
         _max_tokens: int = int(_mem_cfg.get("max_tokens", 128_000))
         _max_turns: int = int(_mem_cfg.get("max_turns", 10_000))
@@ -127,6 +132,8 @@ class Runner:
     @property
     def reasoning_strategy(self) -> ReasoningStrategy:
         """Aktuelle Reasoning-Strategie (Default: PassthroughStrategy)."""
+        if self._reasoning_strategy_name == "auto":
+            return StrategyRegistry.get_default()  # Fallback, Selector läuft in chat()
         return (
             StrategyRegistry.get(self._reasoning_strategy_name)
             or StrategyRegistry.get_default()
@@ -146,10 +153,10 @@ class Runner:
             heinzel.set_strategy(MyStrategy())  # registriert + setzt
         """
         if isinstance(strategy, str):
-            if StrategyRegistry.get(strategy) is None:
+            if strategy != "auto" and StrategyRegistry.get(strategy) is None:
                 raise KeyError(
                     f"Strategie '{strategy}' nicht registriert. "
-                    f"Verfuegbar: {StrategyRegistry.list_available()}"
+                    f"Verfuegbar: {StrategyRegistry.list_available()} + auto"
                 )
             self._reasoning_strategy_name = strategy
         else:
@@ -295,7 +302,12 @@ class Runner:
             if halted:
                 return
 
-            strategy = self.reasoning_strategy
+            # Auto-Selector: wenn 'auto' aktiv, Strategy pro Input wählen
+            if self._reasoning_strategy_name == 'auto':
+                selected_name = await self._strategy_selector.select(ctx, self._provider)
+                strategy = StrategyRegistry.get(selected_name) or StrategyRegistry.get_default()
+            else:
+                strategy = self.reasoning_strategy
 
             # Strategy initialisieren
             ctx_before = ctx
