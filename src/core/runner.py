@@ -275,13 +275,17 @@ class Runner:
     async def chat_stream(
         self, message: str, session_id: str | None = None
     ) -> AsyncGenerator[str, None]:
-        """Streaming Chat-Runde durch die volle Pipeline.
+        """Streaming Chat-Runde mit vollem Reasoning-Loop.
 
         Ablauf:
-          1. run_pre_phases  — SESSION_START bis ON_CONTEXT_READY inkl. Memory
-          2. ON_LLM_REQUEST  — AddOns koennen Request anpassen
-          3. Provider-Stream — Chunks direkt yielden, stream_buffer akkumulieren
-          4. run_post_phases — ON_LOOP_END bis ON_SESSION_END inkl. Turn-Storage
+          - Reasoning-Schritte (next_action != "respond") laufen non-streaming
+            intern durch — Strategy akkumuliert Trace in ctx.metadata.
+          - Nur der finale Schritt (next_action == "respond") streamt.
+          - PassthroughStrategy: erster Plan ist immer "respond" → direkt streamen.
+
+        Damit funktioniert deep_reasoning/chain_of_thought vollstaendig
+        auch im interaktiven CLI, waehrend einfache Strategien unveraendert
+        bleiben.
         """
         try:
             message = await self.on_before_chat(message)
@@ -294,23 +298,77 @@ class Runner:
             strategy = self.reasoning_strategy
 
             # Strategy initialisieren
+            ctx_before = ctx
             ctx = await strategy.initialize(ctx, ctx_history)
-            ctx_history.push(ctx)
+            if ctx.snapshot_id != ctx_before.snapshot_id:
+                ctx_history.push(ctx)
 
-            # Strategy plant Schritt (bei PassthroughStrategy: respond, kein Loop)
-            plan = await strategy.plan_next_step(ctx, ctx_history)
-            ctx = ctx.evolve(step_plan=plan)
-            if plan.prompt_addition:
-                ctx = ctx.evolve(
-                    system_prompt=(ctx.system_prompt or "")
-                    + "\n" + plan.prompt_addition
+            # Reasoning-Loop: alle nicht-finalen Schritte non-streaming
+            while True:
+                plan = await strategy.plan_next_step(ctx, ctx_history)
+                ctx = ctx.evolve(step_plan=plan)
+
+                if plan.prompt_addition:
+                    ctx = ctx.evolve(
+                        system_prompt=(ctx.system_prompt or "")
+                        + "\n" + plan.prompt_addition
+                    )
+
+                ctx, halted = await phase(
+                    self, HookPoint.ON_LLM_REQUEST, ctx, ctx_history
                 )
+                if halted:
+                    return
 
-            ctx, halted = await phase(self, HookPoint.ON_LLM_REQUEST, ctx, ctx_history)
-            if halted:
-                return
+                if plan.next_action == "respond":
+                    # Finaler Schritt — streamen und Loop beenden
+                    break
 
-            # Streaming — yield muss in dieser Funktion bleiben
+                # Reasoning-Schritt: non-streaming LLM-Call
+                logger.debug(
+                    "chat_stream: Reasoning-Schritt '%s' (iter %d)",
+                    plan.next_action, ctx.loop_iteration,
+                )
+                ctx = await call_provider(self, ctx)
+                ctx_history.push(ctx)
+
+                ctx, halted = await dispatch_and_apply(
+                    self, HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
+                )
+                if halted:
+                    return
+
+                reflection = await strategy.reflect(ctx, ctx_history)
+                ctx = ctx.evolve(reflection=reflection)
+
+                # Kognitive Ebene: Strategy entscheidet ob weiterer Schritt
+                if not await strategy.should_continue(ctx, ctx_history):
+                    # Keine weiteren Reasoning-Schritte — direkt zur Synthese
+                    plan_final = await strategy.plan_next_step(ctx, ctx_history)
+                    ctx = ctx.evolve(step_plan=plan_final)
+                    if plan_final.prompt_addition:
+                        ctx = ctx.evolve(
+                            system_prompt=(ctx.system_prompt or "")
+                            + "\n" + plan_final.prompt_addition
+                        )
+                    ctx, _ = await phase(
+                        self, HookPoint.ON_LLM_REQUEST, ctx, ctx_history
+                    )
+                    break
+
+                iteration = ctx.loop_iteration + 1
+                ctx = ctx.evolve(
+                    phase=HookPoint.ON_LOOP_ITERATION,
+                    loop_iteration=iteration,
+                )
+                ctx_history.push(ctx)
+                ctx, halted = await dispatch_and_apply(
+                    self, HookPoint.ON_LOOP_ITERATION, ctx, ctx_history
+                )
+                if halted:
+                    return
+
+            # Finaler Schritt: streamen
             stream_buffer = ""
             try:
                 async for chunk in self._provider.stream(
@@ -337,7 +395,6 @@ class Runner:
                 self, HookPoint.ON_LLM_RESPONSE, ctx, ctx_history
             )
 
-            # Strategy reflektiert
             reflection = await strategy.reflect(ctx, ctx_history)
             ctx = ctx.evolve(reflection=reflection)
 
