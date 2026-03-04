@@ -4,9 +4,19 @@ Alle Models sind immutabel (frozen=True). Inhalte die Tuples verlangen
 werden als tuple übergeben — Listen sind in frozen Models nicht erlaubt.
 """
 
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel
+
+
+class MessageType(str, Enum):
+    """Klassifikation einer Message nach ihrem Lebenszyklus."""
+
+    MEMORY = "memory"        # Working Memory — compactable, persistent
+    REASONING = "reasoning"  # Reasoning-Phasen-Dialog — session-local, ephemeral
+    TOOL = "tool"            # Tool-Use/Result-Blöcke — session-local, ephemeral
+    INPUT = "input"          # User-Input (optional, für Logging)
 
 
 class Message(BaseModel, frozen=True):
@@ -14,6 +24,7 @@ class Message(BaseModel, frozen=True):
 
     role: str
     content: str | list = ""
+    message_type: MessageType = MessageType.MEMORY
 
 
 class TokenUsage(BaseModel, frozen=True):
