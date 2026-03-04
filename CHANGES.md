@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
+## [mvp-002] — 2026-03-04 — Core-Compaction-Monitor (Commit a00213a)
+
+- base.py: _compaction_budget() — ResourceBudget aus Config
+- base.py: _build_handover_summary() — echter LLM-Call fuer Rolling-Session-Handover
+- base.py: _maybe_compact() — Monitor nach jedem Turn, Schwellen 80%/95% aus Config
+- _pipeline.py: _maybe_compact() Aufruf nach add_turn(), ON_SESSION_ROLL bei Roll
+- Config-Keys: memory.compact_threshold, memory.roll_threshold, memory.max_tokens
+- 445 Tests gruen
+
 ## [mvp-002] — 2026-03-03 — HNZ-002-0018 Rolling Sessions Integration (Commit e497d2f)
 
 - session.py: WorkingMemory.compaction_strategy ABC Property ergaenzt
