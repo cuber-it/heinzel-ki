@@ -13,7 +13,7 @@ from typing import Any
 
 from .compaction import CompactionRegistry, RollingSessionRegistry
 from .exceptions import SessionNotFoundError
-from .models.base import Message
+from .models.base import Message, MessageType
 from .models.placeholders import HandoverContext, ResourceBudget
 from .session import (
     _uuid,
@@ -126,9 +126,15 @@ class NoopWorkingMemory(WorkingMemory):
         tokens_used = 0
 
         for turn in reversed(self._turns):
-            user_msg = Message(role="user", content=turn.raw_input)
+            user_msg = Message(
+                role="user",
+                content=turn.raw_input,
+                message_type=MessageType.MEMORY,
+            )
             assistant_msg = Message(
-                role="assistant", content=turn.final_response
+                role="assistant",
+                content=turn.final_response,
+                message_type=MessageType.MEMORY,
             )
             turn_tokens = (
                 len(turn.raw_input) + len(turn.final_response)
