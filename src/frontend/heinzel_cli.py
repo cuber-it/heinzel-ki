@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/ucuber/Workspace/heinzel-ki/.venv/bin/python3
 """heinzel_cli.py — Interaktiver Heinzel auf dem Core-Runner.
 
 Demonstriert und nutzt alle Core-Features:
