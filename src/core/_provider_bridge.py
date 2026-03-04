@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from .exceptions import ContextLengthExceededError
 from .models import HookPoint, PipelineContext
-from .models.base import ToolCall, ToolResult
+from .models.base import Message, MessageType, ToolCall, ToolResult
 
 if TYPE_CHECKING:
     from .runner import Runner
@@ -24,29 +24,12 @@ logger = logging.getLogger(__name__)
 def build_messages_from_ctx(ctx: PipelineContext) -> list[dict[str, Any]]:
     """Messages aus Context bauen.
 
-    Aufbau: [Working Memory History...] + [aktuelle User-Message]
-    Fuer tool_use/tool_result: strukturierte content_blocks einbetten.
-
-    ctx.messages enthaelt Working Memory (prepended in ON_MEMORY_QUERY).
-    ctx.metadata["hnz_tool_messages"] enthaelt tool_use + tool_result Bloecke
-    aus dem laufenden ReAct-Loop — werden zwischen User-Message und aktuellem
-    Prompt eingefuegt.
+    ctx.messages ist Single Source of Truth: enthaelt Working Memory,
+    Reasoning-Dialog (REASONING) und Tool-Bloecke (TOOL).
+    Aufbau: [ctx.messages...] + [aktuelle User-Message]
     """
     current = {"role": "user", "content": ctx.parsed_input or ctx.raw_input}
-    history = [{"role": m.role, "content": m.content} for m in ctx.messages] if ctx.messages else []
-
-    # Reasoning-Messages: Gespraech zwischen Strategy-Phasen
-    # Format: [user: phase-frage, assistant: phase-antwort, user: naechste-frage, ...]
-    reasoning_messages: list[dict] = ctx.metadata.get("hnz_reasoning_messages", [])
-
-    # Tool-Messages aus dem ReAct-Loop (tool_use + tool_result Paare)
-    tool_messages: list[dict] = ctx.metadata.get("hnz_tool_messages", [])
-
-    if reasoning_messages:
-        # Aufbau: [history...] + [user: original-frage] + [reasoning-dialog] + [tool-messages]
-        return history + [current] + reasoning_messages + tool_messages
-    if tool_messages:
-        return history + [current] + tool_messages
+    history = [{"role": m.role, "content": m.content} for m in ctx.messages]
     return history + [current]
 
 
@@ -64,11 +47,6 @@ def _parse_tool_calls(content_blocks: list[dict[str, Any]]) -> list[ToolCall]:
                 args=block.get("input", {}),
             ))
     return calls
-
-
-def build_tool_use_message(content_blocks: list[dict[str, Any]]) -> dict[str, Any]:
-    """Baut eine assistant-Message mit tool_use-Bloecken fuer die History."""
-    return {"role": "assistant", "content": content_blocks}
 
 
 def build_tool_result_message(tool_results: tuple) -> dict[str, Any]:
@@ -151,12 +129,15 @@ async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContex
     # Tool-Calls aus content_blocks extrahieren
     tool_calls = _parse_tool_calls(content_blocks)
 
-    # tool_use-Blöcke für die Message-History merken (ReAct-Loop)
-    new_meta = dict(ctx.metadata)
+    # tool_use-Blöcke direkt in ctx.messages schreiben (MessageType.TOOL)
+    new_messages = ctx.messages
     if content_blocks and tool_calls:
-        existing = list(ctx.metadata.get("hnz_tool_messages", []))
-        existing.append(build_tool_use_message(content_blocks))
-        new_meta["hnz_tool_messages"] = existing
+        tool_use_msg = Message(
+            role="assistant",
+            content=content_blocks,
+            message_type=MessageType.TOOL,
+        )
+        new_messages = ctx.messages + (tool_use_msg,)
 
     return ctx.evolve(
         phase=HookPoint.ON_LLM_RESPONSE,
@@ -164,5 +145,5 @@ async def call_provider(heinzel: Runner, ctx: PipelineContext) -> PipelineContex
         stream_buffer=response,
         tool_requests=tuple(tool_calls),
         loop_done=not bool(tool_calls),   # Tool-Calls? Loop läuft weiter.
-        metadata=new_meta,
+        messages=new_messages,
     )
