@@ -1,17 +1,21 @@
-"""Platzhalter-Models für spätere Epics.
+"""Platzhalter-Models fuer spaetere Epics.
 
 Diese Models haben bewusst minimale Felder. Details werden in den
-zugehörigen Epics ausgebaut:
-  - Fact, Skill  → HNZ-003
-  - Goal         → HNZ-011
-  - ResourceBudget, StepPlan, Reflection, EvaluationResult → HNZ-002+
+zugehoerigen Epics ausgebaut:
+  - Fact, Skill  -> HNZ-003
+  - Goal         -> HNZ-011
+  - ResourceBudget, StepPlan, Reflection, EvaluationResult -> HNZ-002+
 """
 
-from pydantic import BaseModel
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 
 class Fact(BaseModel, frozen=True):
-    """Ein Fakt im Gedächtnis des Heinzel. (Platzhalter, Details in HNZ-003)"""
+    """Ein Fakt im Gedaechtnis des Heinzel.
+
+    (Platzhalter, Details in HNZ-003)"""
 
     key: str
     value: str
@@ -19,7 +23,7 @@ class Fact(BaseModel, frozen=True):
 
 
 class Skill(BaseModel, frozen=True):
-    """Eine Fähigkeit/Anweisung. (Platzhalter, Details in HNZ-003)"""
+    """Eine Faehigkeit/Anweisung. (Platzhalter, Details in HNZ-003)"""
 
     name: str
     version: str = "0.1"
@@ -37,7 +41,7 @@ class Goal(BaseModel, frozen=True):
 
 
 class ResourceBudget(BaseModel, frozen=True):
-    """Ressourcen-Limits für einen Turn."""
+    """Ressourcen-Limits fuer einen Turn."""
 
     max_tokens: int = 100_000
     max_iterations: int = 10
@@ -45,16 +49,46 @@ class ResourceBudget(BaseModel, frozen=True):
 
 
 class StepPlan(BaseModel, frozen=True):
-    """Geplante Schritte für einen Turn."""
+    """Naechster Schritt im Reasoning-Loop.
 
+    next_action steuert was der Heinzel als naechstes tut:
+      - 'think'   : weiterer interner Denkschritt
+      - 'tool'    : Tool-Call (tool_name + tool_args benoetigt)
+      - 'respond' : direkte Antwort an den User (Default)
+
+    prompt_addition wird dem naechsten LLM-Prompt vorangestellt.
+    focus beschreibt das Hauptziel des naechsten Schritts (fuer Logging/Trace).
+    steps bleibt fuer Rueckwaertskompatibilitaet erhalten.
+    """
+
+    next_action: Literal["think", "tool", "respond"] = "respond"
+    tool_name: str | None = None
+    tool_args: dict[str, Any] = Field(default_factory=dict)
+    prompt_addition: str = ""
+    focus: str = ""
     steps: tuple[str, ...] = ()
 
 
 class Reflection(BaseModel, frozen=True):
-    """Selbst-Reflexion nach einem Turn."""
+    """Selbst-Reflexion nach einem Reasoning-Schritt.
 
-    text: str
-    snapshot_id: str
+    step_useful: war der letzte Schritt hilfreich?
+    insight: Erkenntnis die in plan_next_step() einfliesst
+    confidence: Zuversicht in die bisherige Richtung (0.0-1.0)
+    suggest_adaptation: Strategie sollte adapt() aufrufen?
+    compared_snapshot_ids: welche zwei Snapshots wurden verglichen
+      (typisch: (history.snapshots[-2].id, history.current.id))
+
+    text + snapshot_id bleiben fuer Rueckwaertskompatibilitaet erhalten.
+    """
+
+    step_useful: bool = True
+    insight: str = ""
+    confidence: float = 1.0
+    suggest_adaptation: bool = False
+    compared_snapshot_ids: tuple[str, str] = ("", "")
+    text: str = ""
+    snapshot_id: str = ""
 
 
 class EvaluationResult(BaseModel, frozen=True):
@@ -77,7 +111,7 @@ class CompactionResult(BaseModel, frozen=True):
 
 
 class HandoverContext(BaseModel, frozen=True):
-    """Übergabe-Kontext beim Wechsel zu einer neuen Rolling Session."""
+    """Uebergabe-Kontext beim Wechsel zu einer neuen Rolling Session."""
 
     from_session_id: str
     summary: str                        # Was war diese Session

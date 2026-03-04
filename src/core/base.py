@@ -29,6 +29,7 @@ from .models import ContextHistory, HookPoint, PipelineContext
 from .provider import LLMProvider
 from .router import AddOnRouter
 from .compaction import RollingSessionRegistry
+from .reasoning import ReasoningStrategy, StrategyRegistry
 from .models.placeholders import HandoverContext, ResourceBudget
 from .session import SessionManager, WorkingMemory
 from .session_noop import NoopSessionManager
@@ -77,6 +78,7 @@ class BaseHeinzel:
         self._dialog_log = _DialogLogger(self._heinzel_id, self._config)
         self._pending_provider: LLMProvider | None = None   # turn-safe swap
         self._in_turn: bool = False                         # laufender LLM-Call
+        self._reasoning_strategy_name: str = "passthrough"  # Standard-Reasoning
         _mem_cfg = self._config.get("memory", {})
         _max_tokens: int = int(_mem_cfg.get("max_tokens", 128_000))
         _max_turns: int = int(_mem_cfg.get("max_turns", 10_000))
@@ -120,6 +122,42 @@ class BaseHeinzel:
         Default ist NoopSessionManager (in-memory, kein Persist).
         """
         self._session_manager = manager
+
+    @property
+    def reasoning_strategy(self) -> ReasoningStrategy:
+        """Aktuelle Reasoning-Strategie (Default: PassthroughStrategy)."""
+        return (
+            StrategyRegistry.get(self._reasoning_strategy_name)
+            or StrategyRegistry.get_default()
+        )
+
+    def set_strategy(
+        self,
+        strategy: ReasoningStrategy | str,
+    ) -> None:
+        """Reasoning-Strategie zur Laufzeit wechseln.
+
+        Akzeptiert Strategie-Objekt (wird registriert) oder
+        registrierten Namen. Unbekannte Namen -> KeyError.
+
+        Beispiel:
+            heinzel.set_strategy("my_strategy")
+            heinzel.set_strategy(MyStrategy())  # registriert + setzt
+        """
+        if isinstance(strategy, str):
+            if StrategyRegistry.get(strategy) is None:
+                raise KeyError(
+                    f"Strategie '{strategy}' nicht registriert. "
+                    f"Verfuegbar: {StrategyRegistry.list_available()}"
+                )
+            self._reasoning_strategy_name = strategy
+        else:
+            StrategyRegistry.register(strategy)
+            self._reasoning_strategy_name = strategy.name
+        logger.debug(
+            "set_strategy: Strategie auf '%s' gesetzt.",
+            self._reasoning_strategy_name,
+        )
 
     async def _ensure_session(self, session_id: str | None) -> tuple[str, WorkingMemory]:
         """Lazy Session-Init: Session anlegen oder fortsetzen, Working Memory holen.

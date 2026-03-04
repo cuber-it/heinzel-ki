@@ -1,5 +1,13 @@
 """heinzel_core — Kern des Heinzel-Systems."""
 
+from .reasoning import (
+    PassthroughStrategy,
+    ReasoningStrategy,
+    StrategyFeedback,
+    StrategyMetrics,
+    StrategyRegistry,
+    ToolResultAssessment,
+)
 from .compaction import (
     CompactionRegistry,
     CompactionStrategy,
