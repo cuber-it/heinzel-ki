@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING
 
 from .models import AddOnResult, ContextHistory, HookPoint, PipelineContext
 from .session import Turn, WorkingMemory
-from ._provider_bridge import call_provider, build_tool_result_message
+from ._provider_bridge import call_provider
+from .models.base import Message, MessageType
 
 if TYPE_CHECKING:
     from .runner import Runner
@@ -201,13 +202,32 @@ async def run_pipeline(
                 if halted:
                     break
 
-                # Tool-Ergebnis-Message fuer die History aufbauen
+                # Tool-Ergebnis direkt in ctx.messages schreiben (MessageType.TOOL)
                 if ctx.tool_results:
-                    tool_result_msg = build_tool_result_message(ctx.tool_results)
-                    existing_msgs = list(ctx.metadata.get("hnz_tool_messages", []))
-                    existing_msgs.append(tool_result_msg)
+                    blocks = []
+                    for result in ctx.tool_results:
+                        block = {
+                            "type": "tool_result",
+                            "tool_use_id": result.call_id,
+                        }
+                        if result.error:
+                            block["content"] = f"[Fehler: {result.error}]"
+                            block["is_error"] = True
+                        else:
+                            content_val = result.result
+                            block["content"] = (
+                                str(content_val)
+                                if not isinstance(content_val, str)
+                                else content_val
+                            )
+                        blocks.append(block)
+                    tool_result_msg = Message(
+                        role="user",
+                        content=blocks,
+                        message_type=MessageType.TOOL,
+                    )
                     ctx = ctx.evolve(
-                        metadata={**ctx.metadata, "hnz_tool_messages": existing_msgs},
+                        messages=ctx.messages + (tool_result_msg,),
                         tool_requests=(),   # verarbeitet
                     )
 
