@@ -439,3 +439,22 @@ Commit: 5dc0aaa
   - Config aus YAML (--config) oder Hardcode-Defaults
   - Startup-Info: Name, Provider-URL, Log-Pfad
 - 334 Tests gruen
+
+## 7d75c53 — HNZ-002-0009: ReasoningStrategy Interface
+
+### Neue Dateien
+- `src/core/reasoning.py` — ReasoningStrategy ABC, PassthroughStrategy, StrategyRegistry + Models (StrategyFeedback, StrategyMetrics, ToolResultAssessment)
+- `src/core/REASONING_GUIDE.md` — Konzept, History-Features, Code-Beispiele, Compliance-Fixture-Doku
+- `test/test_reasoning.py` — 29 Tests (Passthrough, Registry, BaseHeinzel.set_strategy, Compliance-Fixture)
+
+### Geaenderte Dateien
+- `src/core/models/placeholders.py` — StepPlan erweitert (next_action/tool_name/tool_args/prompt_addition/focus), Reflection erweitert (step_useful/insight/confidence/suggest_adaptation/compared_snapshot_ids), alle Felder backward-compatible
+- `src/core/base.py` — reasoning_strategy Property + set_strategy() + _reasoning_strategy_name + Import
+- `src/core/__init__.py` — reasoning-Exports ergaenzt
+
+### Designentscheidungen
+- TYPE_CHECKING fuer PipelineContext/ContextHistory (kein zirkulaerer Import)
+- PassthroughStrategy = MVP-001-Verhalten: 1 Durchlauf, kein Loop
+- StrategyRegistry.set_default() wirft KeyError fuer unbekannte Namen (fail-fast)
+- set_strategy(obj) registriert + setzt in einem Schritt
+- assert_strategy_compliance() als wiederverwendbares Fixture fuer HNZ-003+ Strategien
