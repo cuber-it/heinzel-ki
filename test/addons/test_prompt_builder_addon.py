@@ -252,7 +252,7 @@ async def test_on_context_build_sets_system_prompt():
 
     ctx = PipelineContext(
         session_id="test-session",
-        user_input="Hallo",
+        parsed_input="Hallo",
         metadata={"facts": ["Fakt1"], "skills": []},
     )
     updated_ctx = await addon.on_context_build(ctx)
@@ -269,7 +269,7 @@ async def test_on_context_build_immutable():
     addon = _make_addon()
     await addon.on_attach(_make_heinzel())
 
-    ctx = PipelineContext(session_id="s", user_input="x")
+    ctx = PipelineContext(session_id="s", parsed_input="x")
     original_prompt = ctx.system_prompt
     updated = await addon.on_context_build(ctx)
     assert ctx.system_prompt == original_prompt  # Original unverändert
