@@ -1,0 +1,89 @@
+# heinzel_cli_2.yaml — Beispiel-Config für heinzel_cli_2.py
+#
+# Alle AddOns werden von HeinzelLoader gebaut und eingehängt.
+# CommandAddOn + BuiltinCommandsAddOn werden automatisch ergänzt.
+#
+# ENV-Variablen: ${VAR} wird substituiert.
+#
+# Verwendung:
+#   python src/frontend/heinzel_cli_2.py --config config/heinzel_cli_2.yaml
+
+agent:
+  id: cli-01
+  name: Heinzel
+  role: assistant
+  goal: Helfe dem Nutzer kompetent und direkt.
+
+# Provider: welcher default, Fallback auf NoopProvider wenn nicht erreichbar
+provider:
+  default: anthropic
+
+providers:
+  anthropic:
+    url: http://thebrain:12102
+    name: claude-sonnet-4-6
+  # openai:
+  #   url: http://thebrain:12101
+  #   name: gpt-4o-mini
+
+memory:
+  max_tokens: 128000
+  max_turns: 10000
+  compact_threshold: 0.80
+  roll_threshold: 0.95
+  compaction_strategy: summarizing   # summarizing | truncation
+
+reasoning:
+  strategy: passthrough   # passthrough | deep_reasoning | chain_of_thought | auto
+
+logging:
+  dialog_log_path: logs/dialog
+  rotation_size_mb: 10
+  retention_days: 30
+
+# AddOns: Reihenfolge egal — HeinzelLoader baut in fester Reihenfolge
+addons:
+
+  # Persistenz (SQLite lokal, kein Service nötig)
+  database:
+    backend: sqlite
+    path: data/cli.db
+
+  # Dialog-Log: alle Turns als JSONL
+  dialog_logger:
+    log_dir: logs/dialogs
+    rotation_size_mb: 5
+    retention_days: 14
+
+  # Prompt-Templates aus Verzeichnis
+  prompt:
+    directory: prompts/
+
+  # Prompt-Builder: Jinja2-Template aus identity + facts + skills + zeit
+  prompt_builder: {}
+
+  # Skills aus YAML-Dateien
+  skills:
+    directory: skills/
+    active: []   # leer = keine Skills vorab geladen
+
+  skill_loader: {}
+
+  # Web-Suche (DuckDuckGo ohne Service, SearXNG mit Service)
+  web_search:
+    backend: duckduckgo   # duckduckgo | searxng | fetch
+    max_results: 5
+    # backends:
+    #   searxng:
+    #     url: http://services:12004
+
+  # MCP Tools (Noop bis HNZ-004 implementiert)
+  mcp_tools_router: {}
+
+  # Mattermost (optional — auskommentiert für reine CLI-Nutzung)
+  # mattermost:
+  #   url: http://services:12002
+  #   token: "${MATTERMOST_TOKEN}"
+  #   channel: heinzel-general
+  #   mention_only: true
+  #   reply_in_thread: true

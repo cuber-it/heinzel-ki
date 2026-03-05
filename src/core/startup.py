@@ -73,7 +73,9 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 _HOOKS: dict[str, set[HookPoint]] = {
-    "database": set(),
+    # AddOns ohne funktionale Hooks bekommen ON_SESSION_START damit sie
+    # im Router-Registry auftauchen und Dependency-Checks funktionieren.
+    "database": {HookPoint.ON_SESSION_START},
     "dialog_logger": {
         HookPoint.ON_INPUT,
         HookPoint.ON_OUTPUT,
@@ -84,11 +86,11 @@ _HOOKS: dict[str, set[HookPoint]] = {
     },
     "prompt": {HookPoint.ON_CONTEXT_BUILD},
     "prompt_builder": {HookPoint.ON_CONTEXT_READY},
-    "skills": set(),
+    "skills": {HookPoint.ON_SESSION_START},
     "skill_loader": {HookPoint.ON_CONTEXT_BUILD},
     "web_search": {HookPoint.ON_CONTEXT_BUILD},
     "mcp_tools_router": {HookPoint.ON_TOOL_REQUEST},
-    "mattermost": set(),
+    "mattermost": {HookPoint.ON_SESSION_START},
 }
 
 _ADDON_ORDER = [
@@ -274,15 +276,9 @@ class HeinzelLoader:
                 raise
 
             registered[addon_name] = addon
-            hooks = _HOOKS.get(addon_name, set())
-
-            if hooks:
-                runner.register_addon(addon, hooks=hooks)
-                logger.debug(f"[HeinzelLoader] '{addon_name}' registriert ({len(hooks)} Hooks)")
-            else:
-                if addon not in runner._addons:
-                    runner._addons.append(addon)
-                logger.debug(f"[HeinzelLoader] '{addon_name}' als Lifecycle-AddOn eingetragen")
+            hooks = _HOOKS.get(addon_name, {HookPoint.ON_SESSION_START})
+            runner.register_addon(addon, hooks=hooks)
+            logger.debug(f"[HeinzelLoader] '{addon_name}' registriert ({len(hooks)} Hooks)")
 
         # MattermostAddOn braucht runner-Referenz
         if "mattermost" in registered:
@@ -303,7 +299,7 @@ def _build_provider(config: AgentConfig) -> Any:
         try:
             from core.provider import HttpLLMProvider
             logger.info(f"[HeinzelLoader] Provider: '{default_name}' → {entry.url} ({entry.name})")
-            return HttpLLMProvider(url=entry.url, model=entry.name)
+            return HttpLLMProvider(name=default_name, base_url=entry.url, model=entry.name)
         except Exception as exc:
             logger.warning(f"[HeinzelLoader] HttpLLMProvider Fehler: {exc} — Noop-Fallback")
 
