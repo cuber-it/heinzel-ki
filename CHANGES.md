@@ -1,5 +1,13 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0012 WebSearchAddOn (Commit f533597)
+
+- web_search/models.py: SearchResult, SearchIntent, IntentType (WEB/SITE/FETCH/NONE)
+- web_search/backends.py: SearchBackend (ABC), SearXNGBackend, DuckDuckGoBackend, FetchBackend, create_backend()
+- web_search/addon.py: WebSearchAddOn — Intent-Parser (regex), on_context_build, set_backend(), set_active_target(), add_target()
+- heinzel_cli.py: !search status/backend/target/add Kommando
+- test: 35 Tests — alle Intent-Typen, Priorität, Target-Auflösung, Context-Injection
+
 ## [mvp-003] — 2026-03-05 — HNZ-003-0014/0006 Skills (Commit 373b80c)
 
 - src/addons/skills/repository.py: SkillRepository (ABC), YamlSkillRepository
