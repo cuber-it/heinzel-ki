@@ -1,5 +1,14 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0005 PromptBuilder Erweiterung (Commit 11eeb20)
+
+- addon.py: build_working_prompt() — system+role+name Layer → Merge → {name}.working-prompt
+- addon.py: get_working_prompt_text() — working prompt abrufbar für CLI
+- addon.py: PROMPT_CHANGED Listener — working prompt bei Layer-Änderung neu bauen
+- addon.py: Namensschema aus AgentIdentity (name, role)
+- heinzel_cli.py: !prompt Kommando — working prompt anzeigen
+- 25 Tests (vorher 21)
+
 ## [mvp-003] — 2026-03-05 — HNZ-003-0005 PromptBuilderAddOn (Commit e915cc6)
 
 - src/addons/prompt_builder/addon.py: PromptBuilderAddOn — on_context_build, render(), set_template(), _get_working_prompt()
