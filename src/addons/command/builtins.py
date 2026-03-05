@@ -386,7 +386,7 @@ class BuiltinCommandsAddOn(AddOn):
                 wm = await sm.get_working_memory(session.id)
                 lines += [
                     f"Session:   {session.id[:8]}… | {session.turn_count} Turns",
-                    f"Kontext:   ~{wm.estimated_tokens} Tokens",
+                    f"Kontext:   ~{wm.estimated_tokens()} Tokens",
                 ]
             else:
                 lines.append("Session:   keine")
