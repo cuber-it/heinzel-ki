@@ -575,3 +575,12 @@ Commit: 5dc0aaa
 - !provider [status|switch|list], !model [<n>|list]
 - !status (Session, Provider, Kontext-Tokens, AddOns), !addons, !quit, !exit
 - 20 Tests
+
+## [mvp-003] — 2026-03-05 — heinzel_cli_2 + HeinzelLoader-Fixes (Commit f8a2575)
+
+- src/frontend/heinzel_cli_2.py: neue CLI — HeinzelLoader baut Runner, alle AddOns aus YAML
+- config/heinzel_cli_2.yaml: Beispiel-Config mit allen AddOns (SQLite, dialog_logger, prompt, skills, web_search, mcp_tools_router)
+- REPL: !-Input → runner.chat() (CommandAddOn dispatcht intern), Rest → runner.chat_stream()
+- CommandAddOn + BuiltinCommandsAddOn werden automatisch ergänzt wenn nicht in Config
+- Kein if/elif-Gebirge — 183 Zeilen gesamt
+- src/core/startup.py: HttpLLMProvider-Kwarg-Fix (url→base_url+name), AddOns ohne Hooks bekommen ON_SESSION_START statt leeres Set (Router-Kompatibilität), else-Branch entfernt
