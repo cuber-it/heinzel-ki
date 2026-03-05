@@ -16,8 +16,13 @@ DEFAULT_CONFIG="$SCRIPT_DIR/config/heinzel_cli_2.yaml"
 # venv prüfen
 if [[ ! -x "$VENV/bin/python" ]]; then
     echo "❌ venv nicht gefunden: $VENV"
-    echo "   python3 -m venv .venv && .venv/bin/pip install -e ."
+    echo "   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
     exit 1
+fi
+
+# Abhängigkeiten sicherstellen (schnell wenn alles schon da)
+if [[ -f "$SCRIPT_DIR/requirements.txt" ]]; then
+    "$VENV/bin/pip" install -q -r "$SCRIPT_DIR/requirements.txt"
 fi
 
 # data/ und logs/ anlegen falls nötig
