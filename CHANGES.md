@@ -508,3 +508,12 @@ Commit: 5dc0aaa
 - StrategyRegistry.set_default() wirft KeyError fuer unbekannte Namen (fail-fast)
 - set_strategy(obj) registriert + setzt in einem Schritt
 - assert_strategy_compliance() als wiederverwendbares Fixture fuer HNZ-003+ Strategien
+
+## [mvp-003] — 2026-03-05 — MCPToolsRouter local handlers (Commit 19c6bf1)
+
+- router.py: register_local_handler() — async callable direkt im Router, kein MCP-Server nötig
+- router.py: unregister_local_handler() — Cleanup bei on_detach
+- router.py: call() — lokale Handler haben Vorrang vor MCP-Dispatch, kein Approval-Flow
+- web_search/addon.py: _register_tools() — local:web_search:search + local:web_search:fetch_page
+- LLM kann autonom suchen/fetchen ohne explizite User-Phrasen (wie Claude/ChatGPT)
+- test_mcp_router.py: 7 neue Tests für local handlers inkl. WebSearchAddOn Integration
