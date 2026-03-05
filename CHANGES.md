@@ -1,5 +1,14 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0014/0006 Skills (Commit 373b80c)
+
+- src/addons/skills/repository.py: SkillRepository (ABC), YamlSkillRepository
+- src/addons/skills/addon.py: SkillsAddOn — Registry, get_active(), Trigger-Match, hot-reload, load/unload/reload_skill
+- src/addons/skills/addon.py: SkillLoaderAddOn — ON_CONTEXT_BUILD → ctx.metadata[skills]
+- src/addons/skills/addon.py: SkillValidationError, _matches() case-insensitive regex
+- Bugfix: PipelineContext.user_input → parsed_input in addon + tests
+- test/addons/test_skills_addon.py: 31 Tests
+
 ## [mvp-003] — 2026-03-05 — HNZ-003-0005 PromptBuilder Erweiterung (Commit 11eeb20)
 
 - addon.py: build_working_prompt() — system+role+name Layer → Merge → {name}.working-prompt
