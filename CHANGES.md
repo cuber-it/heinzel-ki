@@ -1,5 +1,13 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0015 PromptAddOn (Commit 97e3fe7)
+
+- src/addons/prompt/repository.py: PromptRepository (ABC), YamlPromptRepository — load_all/load_one/save/exists/list_names
+- src/addons/prompt/addon.py: PromptAddOn — Registry, render(), hot_reload(), reload_one(), mutate(), Listener-Pattern
+- src/addons/prompt/addon.py: PromptEventType (PROMPT_CHANGED/LOADED/REMOVED) — TODO EventBus
+- src/addons/prompt/__init__.py: Exports
+- test/addons/test_prompt_addon.py: 22 Tests — Repo, Lifecycle, Render, HotReload, Mutate, Events
+
 ## [mvp-003] — 2026-03-05 — HNZ-003-0009 AddOn Basis-Architektur (Commit b190d0c)
 
 - requirements.txt: jinja2>=3.1.0 ergänzt
