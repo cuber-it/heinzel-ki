@@ -1,0 +1,24 @@
+{{ identity }}
+
+Aktuelles Datum und Uhrzeit: {{ now }}
+{% if facts %}
+
+Bekannte Fakten:
+{% for fact in facts %}
+- {{ fact }}
+{% endfor %}
+{% endif %}
+{% if skills %}
+
+Aktive Skills:
+{% for skill in skills %}
+- {{ skill }}
+{% endfor %}
+{% endif %}
+{% if tools %}
+
+Verfügbare Tools:
+{% for tool in tools %}
+- {{ tool }}
+{% endfor %}
+{% endif %}
