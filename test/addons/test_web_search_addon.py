@@ -208,7 +208,8 @@ async def test_on_context_build_web_search():
 
     addon = _make_addon()
     ctx = PipelineContext(session_id="s", parsed_input="suche nach Python asyncio")
-    updated = await addon.on_context_build(ctx)
+    result = await addon.on_context_build(ctx)
+    updated = result.modified_ctx
 
     assert "search_results" in updated.metadata
     assert len(updated.metadata["search_results"]) > 0
@@ -222,9 +223,10 @@ async def test_on_context_build_no_intent():
 
     addon = _make_addon()
     ctx = PipelineContext(session_id="s", parsed_input="wie geht es dir")
-    updated = await addon.on_context_build(ctx)
+    result = await addon.on_context_build(ctx)
+    updated = result.modified_ctx
 
-    assert updated is ctx
+    assert result.modified_ctx is ctx
 
 
 @pytest.mark.asyncio
@@ -234,7 +236,8 @@ async def test_on_context_build_immutable():
 
     addon = _make_addon()
     ctx = PipelineContext(session_id="s", parsed_input="suche nach asyncio")
-    updated = await addon.on_context_build(ctx)
+    result = await addon.on_context_build(ctx)
+    updated = result.modified_ctx
 
     assert updated is not ctx
     assert "search_results" not in (ctx.metadata or {})

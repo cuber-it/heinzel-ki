@@ -32,7 +32,7 @@ from typing import Any
 from core.addon import AddOn
 from core.addon_extension import SkillBase
 from core.exceptions import AddOnError
-from core.models import PipelineContext, ContextHistory
+from core.models import PipelineContext, ContextHistory, AddOnResult
 
 from .repository import SkillRepository, YamlSkillRepository
 
@@ -253,10 +253,10 @@ class SkillLoaderAddOn(AddOn):
 
     async def on_context_build(
         self, ctx: PipelineContext, history: ContextHistory | None = None
-    ) -> PipelineContext:
+    ) -> AddOnResult:
         """Aktive Skills → ctx.metadata['skills']."""
         if self._skills_addon is None:
-            return ctx
+            return AddOnResult(modified_ctx=ctx)
 
         input_text = ctx.parsed_input or ""
         active_skills = self._skills_addon.get_active(input_text)
@@ -273,7 +273,7 @@ class SkillLoaderAddOn(AddOn):
         metadata["skills"] = skill_fragments
         metadata["active_skill_names"] = [s.name for s in active_skills]
 
-        return ctx.model_copy(update={"metadata": metadata})
+        return AddOnResult(modified_ctx=ctx.model_copy(update={"metadata": metadata}))
 
 
 # =============================================================================

@@ -39,7 +39,7 @@ import logging
 import re
 
 from core.addon import AddOn
-from core.models import PipelineContext, ContextHistory
+from core.models import PipelineContext, ContextHistory, AddOnResult
 
 from .backends import SearchBackend, create_backend, FetchBackend
 from .models import IntentType, SearchIntent, SearchResult
@@ -127,23 +127,23 @@ class WebSearchAddOn(AddOn):
 
     async def on_context_build(
         self, ctx: PipelineContext, history: ContextHistory | None = None
-    ) -> PipelineContext:
+    ) -> AddOnResult:
         """Intent erkennen, Suche ausführen, Ergebnisse in metadata."""
         intent = parse_intent(ctx.parsed_input or "", self._targets)
 
         if intent.type == IntentType.NONE:
-            return ctx
+            return AddOnResult(modified_ctx=ctx)
 
         results = await self._execute(intent)
         if not results:
-            return ctx
+            return AddOnResult(modified_ctx=ctx)
 
         metadata = dict(ctx.metadata) if ctx.metadata else {}
         metadata["search_results"] = _format_results(results, intent)
         metadata["search_intent"] = intent.type.value
         metadata["search_query"] = intent.query
 
-        return ctx.model_copy(update={"metadata": metadata})
+        return AddOnResult(modified_ctx=ctx.model_copy(update={"metadata": metadata}))
 
     # -------------------------------------------------------------------------
     # Öffentliche API

@@ -323,7 +323,8 @@ async def test_skill_loader_sets_metadata(skill_dir):
     await loader.on_attach(_make_heinzel_with_skills(skills_addon))
 
     ctx = PipelineContext(session_id="s", parsed_input="python code schreiben")
-    updated = await loader.on_context_build(ctx)
+    result = await loader.on_context_build(ctx)
+    updated = result.modified_ctx
 
     assert "skills" in updated.metadata
     assert any("python-expert" in s for s in updated.metadata["skills"])
@@ -341,7 +342,8 @@ async def test_skill_loader_always_on_no_input(skill_dir):
     await loader.on_attach(_make_heinzel_with_skills(skills_addon))
 
     ctx = PipelineContext(session_id="s", parsed_input="")
-    updated = await loader.on_context_build(ctx)
+    result = await loader.on_context_build(ctx)
+    updated = result.modified_ctx
 
     assert any("always-on" in s for s in updated.metadata["skills"])
 
@@ -358,7 +360,8 @@ async def test_skill_loader_immutable_context(skill_dir):
     await loader.on_attach(_make_heinzel_with_skills(skills_addon))
 
     ctx = PipelineContext(session_id="s", parsed_input="python")
-    updated = await loader.on_context_build(ctx)
+    result = await loader.on_context_build(ctx)
+    updated = result.modified_ctx
 
     assert updated is not ctx
     assert ctx.metadata == {} or "skills" not in (ctx.metadata or {})
@@ -376,5 +379,6 @@ async def test_skill_loader_no_skills_addon():
     await loader.on_attach(heinzel)
 
     ctx = PipelineContext(session_id="s", parsed_input="x")
-    updated = await loader.on_context_build(ctx)
-    assert updated is ctx
+    result = await loader.on_context_build(ctx)
+    updated = result.modified_ctx
+    assert result.modified_ctx is ctx
