@@ -526,3 +526,11 @@ Commit: 5dc0aaa
 - mention_only-Filter, Thread-Reply via root_id, @mention-Stripping vor LLM-Call
 - post() / post_to() für Agent-to-Agent Kommunikation
 - 23 Tests
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0001 DatabaseAddOn (Commit a158fe9)
+
+- database/base.py: DatabaseAddOn (ABC) — execute(), fetch(), fetchrow(), migrate(); SCHEMA_SQL
+- database/sqlite.py: SQLiteAddOn — aiosqlite, :memory: für Tests, FK-Pragma, last_insert_id()
+- database/postgres.py: PostgreSQLAddOn — asyncpg Pool, SERIAL-Adaptation, Import-Guard
+- Schema: sessions, exchanges, facts — idempotent via IF NOT EXISTS
+- 16 Tests — Lifecycle, Migration (3x idempotent), alle Tabellen, UNIQUE/Upsert, ABC-Enforcement
