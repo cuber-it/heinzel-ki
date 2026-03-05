@@ -564,3 +564,14 @@ Commit: 5dc0aaa
 - addons/scheduler/: HNZ-003-0016 SchedulerAddOn — croniter, asyncio-Loop, runner.chat(), Mattermost-Post, from_config(), 14 Tests
 - addons/jupyter/: HNZ-003-0013 JupyterAddOn — JupyterClient REST API, ExecutionResult, local:jupyter:execute_code Tool, 24 Tests
 - Gesamt: 818/818 Tests grün
+
+## [mvp-003] — 2026-03-05 — BuiltinCommandsAddOn (Commit 7df357d)
+
+- addons/command/builtins.py: BuiltinCommandsAddOn — registriert in CommandRegistry
+- !history [n], !! (redo), !history redo [n]
+- !sessions [limit], !resume <id>, !new, !end
+- !fact set/get/list/delete/clear, !facts (Alias), optional DB-Persistenz
+- !skill list/load/unload/reload
+- !provider [status|switch|list], !model [<n>|list]
+- !status (Session, Provider, Kontext-Tokens, AddOns), !addons, !quit, !exit
+- 20 Tests
