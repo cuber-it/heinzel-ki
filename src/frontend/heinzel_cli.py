@@ -198,6 +198,62 @@ def handle_config(cfg: dict[str, Any]) -> None:
 # =============================================================================
 
 
+def handle_search(runner: Runner, args: str) -> None:
+    """!search [status|backend <name>|target <name|off>|add <name> <url>]"""
+    try:
+        addon = runner.heinzel.addons.get("web_search")
+        if addon is None:
+            print("[WebSearchAddOn nicht aktiv]")
+            return
+
+        parts = args.strip().split(maxsplit=1)
+        subcmd = parts[0].lower() if parts else "status"
+        rest = parts[1] if len(parts) > 1 else ""
+
+        if subcmd == "status" or not subcmd:
+            status = addon.get_status()
+            print(f"\n--- WebSearch Status ---")
+            print(f"  Backend:  {status['backend']}")
+            print(f"  Target:   {status['active_target'] or '(keins)'}")
+            print(f"  Results:  max {status['max_results']}")
+            if status["targets"]:
+                print("  Targets:")
+                for name, url in status["targets"].items():
+                    print(f"    {name}: {url}")
+            print("--- Ende ---\n")
+
+        elif subcmd == "backend":
+            if not rest:
+                print("[Verwendung: !search backend <searxng|duckduckgo|fetch>]")
+                return
+            addon.set_backend(rest.strip())
+            print(f"[WebSearch Backend: '{rest.strip()}']")
+
+        elif subcmd == "target":
+            val = rest.strip()
+            if not val or val == "off":
+                addon.set_active_target(None)
+                print("[WebSearch Target-Filter aufgehoben]")
+            else:
+                addon.set_active_target(val)
+                print(f"[WebSearch Target: '{val}']")
+
+        elif subcmd == "add":
+            name_url = rest.strip().split(maxsplit=1)
+            if len(name_url) < 2:
+                print("[Verwendung: !search add <name> <url>]")
+                return
+            addon.add_target(name_url[0], name_url[1])
+            print(f"[WebSearch Target hinzugefügt: '{name_url[0]}' → {name_url[1]}]")
+
+        else:
+            print(f"[Unbekannter !search Subkommando: '{subcmd}']")
+            print("[Verfügbar: status, backend <name>, target <name|off>, add <name> <url>]")
+
+    except Exception as exc:
+        print(f"[Fehler in !search: {exc}]")
+
+
 def handle_prompt(runner: Runner) -> None:
     """!prompt — aktuellen working prompt anzeigen."""
     try:
@@ -384,11 +440,14 @@ async def run_repl(runner: Runner, cfg: dict[str, Any]) -> None:
             elif cmd_lower == "!prompt":
                 handle_prompt(runner)
                 continue
+            elif cmd_lower == "!search":
+                handle_search(runner, rest)
+                continue
             elif user_input.startswith("!"):
                 print(
                     f"[Unbekanntes Kommando: {cmd}  —  "
                     f"!quit !history !memory !session !strategy "
-                    f"!compact !config !feedback !phases !selector !prompt]"
+                    f"!compact !config !feedback !phases !selector !prompt !search]"
                 )
                 continue
 
