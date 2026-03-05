@@ -517,3 +517,12 @@ Commit: 5dc0aaa
 - web_search/addon.py: _register_tools() — local:web_search:search + local:web_search:fetch_page
 - LLM kann autonom suchen/fetchen ohne explizite User-Phrasen (wie Claude/ChatGPT)
 - test_mcp_router.py: 7 neue Tests für local handlers inkl. WebSearchAddOn Integration
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0011 MattermostAddOn (Commit 0e52b6f)
+
+- mattermost/models.py: MattermostMessage, MattermostReply
+- mattermost/client.py: MattermostClient — REST (httpx) + WebSocket (websockets), kein externes MM-Paket
+- mattermost/addon.py: MattermostAddOn — Background WS-Task, exponential backoff reconnect
+- mention_only-Filter, Thread-Reply via root_id, @mention-Stripping vor LLM-Call
+- post() / post_to() für Agent-to-Agent Kommunikation
+- 23 Tests
