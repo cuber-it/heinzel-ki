@@ -118,6 +118,19 @@ class Runner:
         return self._router
 
     @property
+    def addons(self) -> "_AddOnRegistry":
+        """Zugriff auf registrierte AddOns per Name.
+
+        Verwendung: heinzel.addons.get("database")
+        """
+        return _AddOnRegistry(self._addons)
+
+    @property
+    def runner(self) -> "Runner":
+        """Self-Referenz — für AddOns die runner-Ref brauchen (z.B. MattermostAddOn)."""
+        return self
+
+    @property
     def session_manager(self) -> SessionManager:
         return self._session_manager
 
@@ -638,3 +651,20 @@ class Runner:
             except Exception as exc:
                 logger.error("Config-Ladefehler (%s): %s", config_path, exc)
         return {}
+
+
+class _AddOnRegistry:
+    """Thin Wrapper um die AddOn-Liste — ermöglicht .get(name)-Zugriff."""
+
+    def __init__(self, addons: list) -> None:
+        self._addons = addons
+
+    def get(self, name: str):
+        """AddOn per Name holen. None wenn nicht gefunden."""
+        for addon in self._addons:
+            if getattr(addon, "name", None) == name:
+                return addon
+        return None
+
+    def all(self) -> list:
+        return list(self._addons)

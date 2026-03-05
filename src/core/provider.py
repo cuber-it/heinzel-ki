@@ -284,3 +284,17 @@ class HttpLLMProvider(LLMProvider):
                 f"stream fehlgeschlagen: {self._name}",
                 detail=str(exc),
             ) from exc
+
+
+class NoopProvider(LLMProvider):
+    """Fallback-Provider — gibt immer leere Antwort zurück.
+
+    Nützlich wenn kein LLM konfiguriert ist (Tests, Dry-Run).
+    """
+
+    async def chat(self, messages, system_prompt="", model="", **kwargs) -> str:
+        return ""
+
+    async def stream(self, messages, system_prompt="", model="", **kwargs):
+        return
+        yield  # macht es zum Generator
