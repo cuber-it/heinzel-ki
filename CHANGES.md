@@ -544,3 +544,14 @@ Commit: 5dc0aaa
 - Retention: alte Dateien beim Start löschen (retention_days)
 - read_session_log(), search_logs() mit Datumsfilter
 - 18 Tests inkl. Crash-Safety-Nachweis via fsync-Mock
+
+## [mvp-003] — 2026-03-05 — HeinzelLoader / Startup (Commit 5faf694)
+
+- core/startup.py: HeinzelLoader — heinzel.yaml → Runner in einem Aufruf
+- AddOn-Factory-Registry: database, dialog_logger, prompt, prompt_builder, skills, skill_loader, web_search, mcp_tools_router, mattermost
+- Dependency-aware Reihenfolge, Lifecycle-only AddOns (ohne Hooks)
+- ENV-Substitution: ${VAR} in YAML rekursiv
+- register_addon_factory() für eigene AddOns
+- core/provider.py: NoopProvider — Fallback ohne LLM-Infra
+- core/runner.py: runner.addons.get(name), runner.runner (Self-Ref)
+- 18 Tests
