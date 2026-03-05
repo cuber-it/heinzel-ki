@@ -1,12 +1,13 @@
-"""Tests für HeinzelLoader — Config-Parsing, AddOn-Reihenfolge, ENV-Substitution, Provider-Fallback."""
+"""Tests für HeinzelLoader — get_config()-Integration, AddOn-Reihenfolge, Provider-Fallback."""
 
 from __future__ import annotations
 
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import MagicMock
 
-from core.startup import HeinzelLoader, _substitute_env, _resolve_env, _find_config
+from core.startup import HeinzelLoader
+from core.config import get_config, reset_config, AgentConfig
 from core.provider import NoopProvider
 
 
@@ -22,53 +23,45 @@ def _write_yaml(tmp_path: Path, content: str) -> Path:
 
 
 # =============================================================================
-# ENV-Substitution
+# Config-Integration
 # =============================================================================
 
 
-def test_resolve_env_substitutes(monkeypatch):
-    monkeypatch.setenv("MY_TOKEN", "secret-123")
-    assert _resolve_env("${MY_TOKEN}") == "secret-123"
+def test_get_config_reads_agent(tmp_path):
+    cfg = _write_yaml(tmp_path, "agent:\n  name: riker\n  id: riker-01\n")
+    reset_config()
+    config = get_config(cfg)
+    assert config.agent.name == "riker"
+    assert config.agent.id == "riker-01"
 
 
-def test_resolve_env_unknown_passthrough():
-    result = _resolve_env("${UNKNOWN_VAR_XYZ}")
-    assert result == "${UNKNOWN_VAR_XYZ}"
-
-
-def test_substitute_env_recursive(monkeypatch):
-    monkeypatch.setenv("DB_PASS", "pass123")
-    data = {"db": {"dsn": "postgres://admin:${DB_PASS}@host/db"}}
-    result = _substitute_env(data)
-    assert "pass123" in result["db"]["dsn"]
-
-
-def test_substitute_env_in_list(monkeypatch):
-    monkeypatch.setenv("TOKEN", "tok")
-    result = _substitute_env(["${TOKEN}", "other"])
-    assert result[0] == "tok"
-
-
-# =============================================================================
-# Config laden
-# =============================================================================
-
-
-def test_loader_no_config_uses_defaults(tmp_path):
-    loader = HeinzelLoader(config_path=tmp_path / "nonexistent.yaml")
-    raw = loader._load_yaml()
-    assert isinstance(raw, dict)
-
-
-def test_loader_reads_yaml(tmp_path):
+def test_get_config_addons_field(tmp_path):
     cfg = _write_yaml(tmp_path, """
-heinzel:
-  name: riker
-  id: riker-01
+addons:
+  database:
+    backend: sqlite
+  web_search:
+    backend: duckduckgo
 """)
-    loader = HeinzelLoader(config_path=cfg)
-    raw = loader._load_yaml()
-    assert raw["heinzel"]["name"] == "riker"
+    reset_config()
+    config = get_config(cfg)
+    assert "database" in config.addons
+    assert "web_search" in config.addons
+
+
+def test_get_config_env_override(tmp_path, monkeypatch):
+    cfg = _write_yaml(tmp_path, "agent:\n  name: original\n")
+    monkeypatch.setenv("AGENT_AGENT_NAME", "overridden")
+    reset_config()
+    config = get_config(cfg)
+    assert config.agent.name == "overridden"
+
+
+def test_get_config_defaults_without_file():
+    reset_config()
+    config = get_config("/tmp/nonexistent_heinzel_xyz.yaml")
+    assert isinstance(config, AgentConfig)
+    assert config.agent.name == "Agent"  # Default
 
 
 # =============================================================================
@@ -76,29 +69,20 @@ heinzel:
 # =============================================================================
 
 
-def test_build_runner_name(tmp_path):
-    cfg = _write_yaml(tmp_path, """
-heinzel:
-  name: riker
-""")
+def test_build_runner_uses_agent_name(tmp_path):
+    cfg = _write_yaml(tmp_path, "agent:\n  name: riker\n")
     loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
+    reset_config()
+    loader._config = get_config(cfg)
     runner = loader._build_runner()
     assert runner._name == "riker"
 
 
-def test_build_runner_default_name(tmp_path):
-    cfg = _write_yaml(tmp_path, "")
+def test_build_runner_noop_without_provider(tmp_path):
+    cfg = _write_yaml(tmp_path, "agent:\n  name: test\n")
+    reset_config()
     loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
-    runner = loader._build_runner()
-    assert runner._name == "heinzel"
-
-
-def test_build_runner_noop_provider_without_config(tmp_path):
-    cfg = _write_yaml(tmp_path, "")
-    loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
+    loader._config = get_config(cfg)
     runner = loader._build_runner()
     assert isinstance(runner._provider, NoopProvider)
 
@@ -108,19 +92,19 @@ def test_build_runner_noop_provider_without_config(tmp_path):
 # =============================================================================
 
 
-def test_register_addons_sqlite(tmp_path):
+def test_register_sqlite_addon(tmp_path):
     cfg = _write_yaml(tmp_path, """
 addons:
   database:
     backend: sqlite
     path: ":memory:"
 """)
+    reset_config()
     loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
+    loader._config = get_config(cfg)
     runner = loader._build_runner()
     loader._register_addons(runner)
-    names = [a.name for a in runner._addons]
-    assert "database" in names
+    assert any(a.name == "database" for a in runner._addons)
 
 
 def test_register_addons_order(tmp_path):
@@ -132,8 +116,9 @@ addons:
   database:
     backend: sqlite
 """)
+    reset_config()
     loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
+    loader._config = get_config(cfg)
     runner = loader._build_runner()
     loader._register_addons(runner)
     names = [a.name for a in runner._addons]
@@ -141,30 +126,24 @@ addons:
 
 
 def test_register_unknown_addon_skipped(tmp_path):
-    cfg = _write_yaml(tmp_path, """
-addons:
-  nicht_existent:
-    foo: bar
-""")
+    cfg = _write_yaml(tmp_path, "addons:\n  nicht_existent:\n    foo: bar\n")
+    reset_config()
     loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
+    loader._config = get_config(cfg)
     runner = loader._build_runner()
-    loader._register_addons(runner)  # darf nicht crashen
+    loader._register_addons(runner)
     assert len(runner._addons) == 0
 
 
 def test_register_custom_factory(tmp_path):
-    """Eigene Factory kann Default überschreiben."""
-    cfg = _write_yaml(tmp_path, """
-addons:
-  database: {}
-""")
+    cfg = _write_yaml(tmp_path, "addons:\n  database: {}\n")
+    reset_config()
     loader = HeinzelLoader(config_path=cfg)
-    loader._raw = loader._load_yaml()
+    loader._config = get_config(cfg)
 
     mock_addon = MagicMock()
     mock_addon.name = "database"
-    loader.register_addon_factory("database", lambda cfg, raw: mock_addon)
+    loader.register_addon_factory("database", lambda cfg, config: mock_addon)
 
     runner = loader._build_runner()
     loader._register_addons(runner)
@@ -179,7 +158,7 @@ addons:
 @pytest.mark.asyncio
 async def test_build_returns_connected_runner(tmp_path):
     cfg = _write_yaml(tmp_path, """
-heinzel:
+agent:
   name: test-heinzel
 addons:
   database:
@@ -195,7 +174,7 @@ addons:
 
 @pytest.mark.asyncio
 async def test_build_no_addons(tmp_path):
-    cfg = _write_yaml(tmp_path, "heinzel:\n  name: minimal\n")
+    cfg = _write_yaml(tmp_path, "agent:\n  name: minimal\n")
     loader = HeinzelLoader(config_path=cfg)
     runner = await loader.build()
     assert runner._connected is True
@@ -212,8 +191,7 @@ addons:
 """)
     loader = HeinzelLoader(config_path=cfg)
     runner = await loader.build()
-    names = [a.name for a in runner._addons]
-    assert "web_search" in names
+    assert any(a.name == "web_search" for a in runner._addons)
     await runner.disconnect()
 
 
@@ -224,13 +202,11 @@ addons:
 
 @pytest.mark.asyncio
 async def test_noop_provider_returns_empty():
-    provider = NoopProvider()
-    result = await provider.chat([])
+    result = await NoopProvider().chat([])
     assert result == ""
 
 
 @pytest.mark.asyncio
 async def test_noop_provider_stream_empty():
-    provider = NoopProvider()
-    chunks = [c async for c in provider.stream([])]
+    chunks = [c async for c in NoopProvider().stream([])]
     assert chunks == []

@@ -87,6 +87,7 @@ class AgentConfig(BaseModel):
     session: SessionConfig = SessionConfig()
     logging: LoggingConfig = LoggingConfig()
     skills: SkillsConfig = SkillsConfig()
+    addons: dict = {}   # AddOn-Konfiguration — freies Dict, wird vom HeinzelLoader interpretiert
 
     @field_validator("providers", mode="before")
     @classmethod
