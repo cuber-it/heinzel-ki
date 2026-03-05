@@ -1,5 +1,12 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0005 PromptBuilderAddOn (Commit e915cc6)
+
+- src/addons/prompt_builder/addon.py: PromptBuilderAddOn — on_context_build, render(), set_template(), _get_working_prompt()
+- src/addons/prompt_builder/addon.py: _format_now() Deutsch, _compress_blank_lines()
+- src/addons/prompt_builder/templates/default.j2: Default-Template mit identity, Zeitkontext, Facts, Skills, Tools
+- test/addons/test_prompt_builder_addon.py: 21 Tests
+
 ## [mvp-003] — 2026-03-05 — HNZ-003-0015 PromptAddOn (Commit 97e3fe7)
 
 - src/addons/prompt/repository.py: PromptRepository (ABC), YamlPromptRepository — load_all/load_one/save/exists/list_names
