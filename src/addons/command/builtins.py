@@ -409,6 +409,19 @@ class BuiltinCommandsAddOn(AddOn):
                 lines.append(f"  {a.name} v{getattr(a, 'version', '?')} [{hook_str}]")
             return CommandResult(message="AddOns:\n" + "\n".join(lines))
 
+        @registry.register("prompt", description="Aktuellen Working Prompt anzeigen")
+        async def cmd_prompt(ctx: CommandContext) -> CommandResult:
+            runner = _runner(ctx)
+            if runner is None:
+                return CommandResult(success=False, message="Kein Runner verfügbar.")
+            pb = runner.addons.get("prompt_builder")
+            if pb is None:
+                return CommandResult(success=False, message="PromptBuilderAddOn nicht aktiv.")
+            text = pb.get_working_prompt_text()
+            if not text:
+                return CommandResult(message="(kein Working Prompt)")
+            return CommandResult(message=f"Working Prompt:\n\n{text}")
+
         @registry.register("quit", description="Heinzel beenden")
         async def cmd_quit(ctx: CommandContext) -> CommandResult:
             runner = _runner(ctx)

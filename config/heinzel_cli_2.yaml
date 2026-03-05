@@ -20,8 +20,8 @@ provider:
 
 providers:
   anthropic:
-    url: http://thebrain:12102
-    name: claude-sonnet-4-6
+    url: http://thebrain:12101
+    name: o3
   # openai:
   #   url: http://thebrain:12101
   #   name: gpt-4o-mini
