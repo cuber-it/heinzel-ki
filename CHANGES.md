@@ -1,5 +1,14 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0009 AddOn Basis-Architektur (Commit b190d0c)
+
+- requirements.txt: jinja2>=3.1.0 ergänzt
+- src/core/addon_extension.py: BaseAddOnExtension (ABC) mit name/version/load()/unload()
+- src/core/addon_extension.py: SkillBase — description, trigger_patterns, system_prompt_fragment, tools; load/unload als No-Op
+- src/core/addon_extension.py: PromptBase — Jinja2-Template, variables, context (system/user/few-shot); StrictUndefined; render() mit Default-Merge
+- src/core/__init__.py: BaseAddOnExtension, SkillBase, PromptBase exportiert
+- test/core/test_addon_extension.py: 17 Tests — ABC-Enforcement, Defaults, Mutable-Isolation, Lifecycle, Rendering, StrictUndefined, Import
+
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
