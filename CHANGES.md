@@ -555,3 +555,12 @@ Commit: 5dc0aaa
 - core/provider.py: NoopProvider — Fallback ohne LLM-Infra
 - core/runner.py: runner.addons.get(name), runner.runner (Self-Ref)
 - 18 Tests
+
+## [mvp-003] — 2026-03-05 — Alle In-Progress-Karten (Commits 4e38835…c727d9f)
+
+- core/addon_loader.py: HNZ-003-0007 AddOnLoader — Hot-Reload, load_from_file/package, Dependency-Check, force-unload nach 5s, 17 Tests
+- addons/command/addon.py: CommandAddOn I — !-Parsing (shlex), CommandRegistry, Dispatch, !help, halt-Signal, 19 Tests
+- addons/command/addon2.py: CommandAddOn II — AliasStore, Ketten (&&, fail-fast), MacroStore (SQLite-persistent), 25 Tests
+- addons/scheduler/: HNZ-003-0016 SchedulerAddOn — croniter, asyncio-Loop, runner.chat(), Mattermost-Post, from_config(), 14 Tests
+- addons/jupyter/: HNZ-003-0013 JupyterAddOn — JupyterClient REST API, ExecutionResult, local:jupyter:execute_code Tool, 24 Tests
+- Gesamt: 818/818 Tests grün
