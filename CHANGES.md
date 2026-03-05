@@ -534,3 +534,13 @@ Commit: 5dc0aaa
 - database/postgres.py: PostgreSQLAddOn — asyncpg Pool, SERIAL-Adaptation, Import-Guard
 - Schema: sessions, exchanges, facts — idempotent via IF NOT EXISTS
 - 16 Tests — Lifecycle, Migration (3x idempotent), alle Tabellen, UNIQUE/Upsert, ABC-Enforcement
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0004 DialogLoggerAddOn (Commit 2b813c2)
+
+- dialog_logger/addon.py: alle Hooks (input, output, thinking, tool_request, tool_result, error)
+- Pfadschema: {log_dir}/{heinzel_id}/{YYYY-MM-DD}/{session_id}.jsonl
+- Crash-Safety: os.fsync() nach jedem Write
+- Rotation bei Größenüberschreitung (rotation_size_mb)
+- Retention: alte Dateien beim Start löschen (retention_days)
+- read_session_log(), search_logs() mit Datumsfilter
+- 18 Tests inkl. Crash-Safety-Nachweis via fsync-Mock
