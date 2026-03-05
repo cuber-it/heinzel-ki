@@ -232,12 +232,37 @@ class HeinzelLoader:
         self._config = get_config(self._config_path)
         runner = self._build_runner()
         self._register_addons(runner)
+        self._apply_reasoning(runner)
         await runner.connect()
         logger.info(
             f"[HeinzelLoader] '{runner._name}' gestartet — "
             f"{len(runner._addons)} AddOn(s)"
         )
         return runner
+
+    def _apply_reasoning(self, runner: Runner) -> None:
+        """Reasoning-Strategie aus Config setzen."""
+        strategy_name = self._config.addons.get("reasoning", {})
+        if not strategy_name:
+            # aus root-level reasoning-Section
+            raw = getattr(self._config, "_raw", {})
+            strategy_name = ""
+        # AgentConfig hat kein reasoning-Feld — aus raw YAML holen
+        import yaml
+        if self._config_path:
+            try:
+                raw = yaml.safe_load(open(self._config_path).read()) or {}
+                strategy_name = raw.get("reasoning", {}).get("strategy", "passthrough")
+            except Exception:
+                strategy_name = "passthrough"
+        else:
+            strategy_name = "passthrough"
+
+        try:
+            runner.set_strategy(strategy_name)
+            logger.info(f"[HeinzelLoader] Strategie: '{strategy_name}'")
+        except KeyError:
+            logger.warning(f"[HeinzelLoader] Unbekannte Strategie '{strategy_name}' — passthrough")
 
     # -------------------------------------------------------------------------
     # Interna
