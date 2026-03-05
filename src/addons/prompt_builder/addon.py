@@ -29,7 +29,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound
 
 from core.addon import AddOn
-from core.models import PipelineContext, ContextHistory
+from core.models import PipelineContext, ContextHistory, AddOnResult
 
 logger = logging.getLogger(__name__)
 
@@ -200,13 +200,13 @@ class PromptBuilderAddOn(AddOn):
 
     async def on_context_build(
         self, ctx: PipelineContext, history: ContextHistory | None = None
-    ) -> PipelineContext:
+    ) -> AddOnResult:
         """ON_CONTEXT_BUILD — ctx.system_prompt setzen."""
         system_prompt = self.render(
             template_name=self._template_name,
             metadata=ctx.metadata if hasattr(ctx, "metadata") else {},
         )
-        return ctx.model_copy(update={"system_prompt": system_prompt})
+        return AddOnResult(modified_ctx=ctx.model_copy(update={"system_prompt": system_prompt}))
 
     # -------------------------------------------------------------------------
     # Öffentliche API

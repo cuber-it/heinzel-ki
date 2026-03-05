@@ -255,7 +255,8 @@ async def test_on_context_build_sets_system_prompt():
         parsed_input="Hallo",
         metadata={"facts": ["Fakt1"], "skills": []},
     )
-    updated_ctx = await addon.on_context_build(ctx)
+    result = await addon.on_context_build(ctx)
+    updated_ctx = result.modified_ctx
     assert updated_ctx.system_prompt is not None
     assert len(updated_ctx.system_prompt) > 0
     assert "Ich bin Heinzel." in updated_ctx.system_prompt
