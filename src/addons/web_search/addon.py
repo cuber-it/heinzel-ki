@@ -11,7 +11,7 @@ und werden vom PromptBuilderAddOn ins Template eingebaut.
 Konfiguration (heinzel.yaml):
     addons:
       web_search:
-        backend: searxng          # aktives Backend
+        backend: duckduckgo       # aktives Backend — beliebig: searxng, duckduckgo, fetch
         max_results: 5
         backends:
           searxng:
@@ -88,7 +88,7 @@ class WebSearchAddOn(AddOn):
 
     def __init__(
         self,
-        backend_name: str = "searxng",
+        backend_name: str = "duckduckgo",  # Pflicht aus Config — kein bevorzugtes Backend
         max_results: int = 5,
         backends_config: dict | None = None,
         targets: dict[str, str] | None = None,

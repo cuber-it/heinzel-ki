@@ -49,7 +49,7 @@ class SearXNGBackend(SearchBackend):
     """Sucht via SearXNG JSON-API.
 
     Config:
-        url: http://services:12004
+        url: http://your-searxng-host:port
         engines: [google, bing, duckduckgo]   # optional
         timeout: 10
     """
@@ -58,7 +58,7 @@ class SearXNGBackend(SearchBackend):
 
     def __init__(
         self,
-        url: str = "http://services:12004",
+        url: str,  # Pflichtfeld — aus Config, kein Default
         engines: list[str] | None = None,
         timeout: int = 10,
     ) -> None:
@@ -259,7 +259,7 @@ def create_backend(name: str, config: dict) -> SearchBackend:
     """Backend aus Name und Config-Dict erstellen."""
     if name == "searxng":
         return SearXNGBackend(
-            url=config.get("url", "http://services:12004"),
+            url=config["url"],  # url ist Pflicht in der Config
             engines=config.get("engines"),
             timeout=config.get("timeout", 10),
         )
