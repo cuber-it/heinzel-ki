@@ -238,13 +238,13 @@ async def test_set_template(custom_template_dir: Path):
 
 
 # =============================================================================
-# on_context_build Hook
+# on_context_ready Hook
 # =============================================================================
 
 
 @pytest.mark.asyncio
-async def test_on_context_build_sets_system_prompt():
-    """on_context_build() setzt system_prompt im Context."""
+async def test_on_context_ready_sets_system_prompt():
+    """on_context_ready() setzt system_prompt im Context."""
     from core.models import PipelineContext
 
     addon = _make_addon()
@@ -255,7 +255,7 @@ async def test_on_context_build_sets_system_prompt():
         parsed_input="Hallo",
         metadata={"facts": ["Fakt1"], "skills": []},
     )
-    result = await addon.on_context_build(ctx)
+    result = await addon.on_context_ready(ctx)
     updated_ctx = result.modified_ctx
     assert updated_ctx.system_prompt is not None
     assert len(updated_ctx.system_prompt) > 0
@@ -263,8 +263,8 @@ async def test_on_context_build_sets_system_prompt():
 
 
 @pytest.mark.asyncio
-async def test_on_context_build_immutable():
-    """on_context_build() verändert den originalen Context nicht."""
+async def test_on_context_ready_immutable():
+    """on_context_ready() verändert den originalen Context nicht."""
     from core.models import PipelineContext
 
     addon = _make_addon()
@@ -272,7 +272,7 @@ async def test_on_context_build_immutable():
 
     ctx = PipelineContext(session_id="s", parsed_input="x")
     original_prompt = ctx.system_prompt
-    updated = await addon.on_context_build(ctx)
+    updated = await addon.on_context_ready(ctx)
     assert ctx.system_prompt == original_prompt  # Original unverändert
     assert updated is not ctx  # Neues Objekt
 

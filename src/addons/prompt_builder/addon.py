@@ -198,7 +198,7 @@ class PromptBuilderAddOn(AddOn):
     # Pipeline Hook
     # -------------------------------------------------------------------------
 
-    async def on_context_build(
+    async def on_context_ready(
         self, ctx: PipelineContext, history: ContextHistory | None = None
     ) -> AddOnResult:
         """ON_CONTEXT_BUILD — ctx.system_prompt setzen."""
