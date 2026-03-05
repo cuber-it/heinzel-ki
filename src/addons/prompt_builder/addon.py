@@ -243,6 +243,7 @@ class PromptBuilderAddOn(AddOn):
             facts=metadata.get("facts") or [],
             skills=metadata.get("skills") or [],
             tools=metadata.get("tools") or [],
+            search_results=metadata.get("search_results") or "",
         )
         return _compress_blank_lines(result)
 
