@@ -21,6 +21,7 @@ Kommandos:
   !feedback  — Letzten Turn bewerten (1-5, optional Kommentar)
   !phases    — Reasoning-Phasen ein-/ausblenden (on|off)
   !selector  — Selector-Stats anzeigen
+  !prompt    — Working Prompt anzeigen
 
 Config-YAML (optional, Suchpfad: ./heinzel.yaml, ./config/heinzel.yaml):
 
@@ -193,6 +194,29 @@ def handle_config(cfg: dict[str, Any]) -> None:
 
 
 # =============================================================================
+# Working Prompt
+# =============================================================================
+
+
+def handle_prompt(runner: Runner) -> None:
+    """!prompt — aktuellen working prompt anzeigen."""
+    try:
+        addon = runner.heinzel.addons.get("prompt_builder")
+        if addon is None:
+            print("[PromptBuilderAddOn nicht aktiv — !prompt nicht verfügbar]")
+            return
+        text = addon.get_working_prompt_text()
+        if not text:
+            print("[Kein working prompt vorhanden — Prompt-Dateien geladen?]")
+            return
+        print("\n--- Working Prompt ---")
+        print(text)
+        print("--- Ende ---\n")
+    except Exception as exc:
+        print(f"[Fehler beim Abrufen des working prompt: {exc}]")
+
+
+# =============================================================================
 # Feedback, Phases, Selector
 # =============================================================================
 
@@ -357,11 +381,14 @@ async def run_repl(runner: Runner, cfg: dict[str, Any]) -> None:
             elif cmd_lower == "!selector":
                 await handle_selector_stats()
                 continue
+            elif cmd_lower == "!prompt":
+                handle_prompt(runner)
+                continue
             elif user_input.startswith("!"):
                 print(
                     f"[Unbekanntes Kommando: {cmd}  —  "
                     f"!quit !history !memory !session !strategy "
-                    f"!compact !config !feedback !phases !selector]"
+                    f"!compact !config !feedback !phases !selector !prompt]"
                 )
                 continue
 

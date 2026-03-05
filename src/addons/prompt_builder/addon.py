@@ -1,14 +1,21 @@
-"""PromptBuilderAddOn — System-Prompt pro Turn assemblieren.
+"""PromptBuilderAddOn — Working Prompt bauen und System-Prompt pro Turn assemblieren.
 
-Nimmt den working prompt aus der PromptAddOn-Registry und reichert ihn
-turn-spezifisch an: Zeitkontext, Facts, Skills, Tools.
+Zwei Aufgaben:
+  1. Session-Start: base + type + instance → mechanischer Merge → working prompt
+     in PromptAddOn-Registry speichern. Wird auch bei PROMPT_CHANGED neu gebaut.
+  2. Pro Turn (ON_CONTEXT_BUILD): working prompt + Zeitkontext + Facts + Skills + Tools
+     → ctx.system_prompt
+
+Namensschema (aus AgentIdentity):
+  system                          → base layer
+  {identity.role}                 → type layer  (z.B. 'researcher')
+  {identity.name}                 → instance layer (z.B. 'riker')
+  {identity.name}.working-prompt  → assemblierter working prompt
 
 Importpfad:
     from addons.prompt_builder import PromptBuilderAddOn
 
 Abhängigkeit: PromptAddOn muss vor diesem AddOn eingehängt sein.
-Der working prompt muss unter dem Namen 'working' in der Registry liegen.
-
 ON_CONTEXT_BUILD → ctx.system_prompt setzen.
 """
 
@@ -26,66 +33,78 @@ from core.models import PipelineContext, ContextHistory
 
 logger = logging.getLogger(__name__)
 
-# Standardname des working prompt in der PromptAddOn-Registry
-WORKING_PROMPT_NAME = "working"
+# Layer-Namen
+SYSTEM_PROMPT_NAME = "system"          # base layer — immer gleich
+WORKING_PROMPT_SUFFIX = "working-prompt"  # {name}.working-prompt
 
 # Pfad zum mitgelieferten Default-Template
 _DEFAULT_TEMPLATE_DIR = Path(__file__).parent / "templates"
 _DEFAULT_TEMPLATE_NAME = "default.j2"
 
+# Fallback wenn kein Heinzel-Name bekannt
+WORKING_PROMPT_NAME = "working"
+
 
 class PromptBuilderAddOn(AddOn):
-    """Assembliert ctx.system_prompt bei jedem Turn.
+    """Baut den working prompt und assembliert ctx.system_prompt bei jedem Turn.
 
     Konfiguration (in heinzel.yaml):
         addons:
           prompt_builder:
-            template_path: prompts/templates/   # optional, default = eingebautes default.j2
-            working_prompt_name: working         # optional
+            template_path: prompts/templates/   # optional
 
-    Quellen für den System-Prompt (pro Turn):
-        1. working prompt aus PromptAddOn-Registry (Kern)
-        2. Zeitkontext (Deutsch, ISO-Format)
-        3. ctx.metadata['facts']  — Liste von Strings
-        4. ctx.metadata['skills'] — Liste von Strings
-        5. ctx.metadata['tools']  — Liste von Strings (Platzhalter)
+    Working-Prompt-Aufbau (einmalig bei on_attach und bei PROMPT_CHANGED):
+        system.yaml + {role}.yaml + {name}.yaml
+        → mechanischer Merge (Konkatenation, Layer für Layer)
+        → gespeichert als {name}.working-prompt in PromptAddOn-Registry
+
+    Turn-Assembler (ON_CONTEXT_BUILD):
+        working prompt + Zeitkontext + Facts + Skills + Tools → ctx.system_prompt
     """
 
     name = "prompt_builder"
     version = "0.1.0"
-    dependencies = ["prompt"]  # PromptAddOn muss zuerst eingehängt sein
+    dependencies = ["prompt"]
 
     def __init__(
         self,
         template_path: str | Path | None = None,
-        working_prompt_name: str = WORKING_PROMPT_NAME,
     ) -> None:
         self._template_path = Path(template_path) if template_path else None
-        self._working_prompt_name = working_prompt_name
         self._jinja_env: Environment | None = None
         self._template_name: str = _DEFAULT_TEMPLATE_NAME
-        self._prompt_addon = None  # Referenz auf PromptAddOn, gesetzt in on_attach
+        self._prompt_addon = None
+        self._working_prompt_name: str = WORKING_PROMPT_NAME  # wird in on_attach gesetzt
+        self._heinzel_name: str = ""
+        self._heinzel_role: str = ""
 
     # -------------------------------------------------------------------------
     # AddOn Lifecycle
     # -------------------------------------------------------------------------
 
     async def on_attach(self, heinzel) -> None:
-        """Jinja2-Environment initialisieren, PromptAddOn-Referenz holen."""
-        # PromptAddOn aus dem AddOnManager holen
+        """Jinja2-Environment init, Identity auslesen, working prompt bauen."""
+        # PromptAddOn holen
         self._prompt_addon = heinzel.addons.get("prompt")
         if self._prompt_addon is None:
-            logger.warning(
-                "[PromptBuilderAddOn] PromptAddOn nicht gefunden — "
-                "working prompt wird nicht verfügbar sein"
-            )
+            logger.warning("[PromptBuilderAddOn] PromptAddOn nicht gefunden")
 
-        # Template-Verzeichnis: custom oder eingebaut
+        # Identity aus Config
+        try:
+            identity = heinzel.config.agent
+            self._heinzel_name = (identity.name or "heinzel").lower().replace(" ", "-")
+            self._heinzel_role = (identity.role or "assistant").lower().replace(" ", "-")
+        except Exception:
+            self._heinzel_name = "heinzel"
+            self._heinzel_role = "assistant"
+
+        self._working_prompt_name = f"{self._heinzel_name}.{WORKING_PROMPT_SUFFIX}"
+
+        # Template-Verzeichnis
         template_dir = self._template_path or _DEFAULT_TEMPLATE_DIR
         if not Path(template_dir).exists():
             logger.warning(
-                f"[PromptBuilderAddOn] Template-Verzeichnis '{template_dir}' "
-                "nicht gefunden — nutze eingebautes Default"
+                f"[PromptBuilderAddOn] Template-Dir '{template_dir}' fehlt — nutze Default"
             )
             template_dir = _DEFAULT_TEMPLATE_DIR
 
@@ -95,14 +114,85 @@ class PromptBuilderAddOn(AddOn):
             trim_blocks=True,
             lstrip_blocks=True,
         )
+
+        # PROMPT_CHANGED Listener registrieren
+        if self._prompt_addon is not None:
+            self._prompt_addon.on_prompt_changed(self._on_prompt_changed)
+
+        # Working prompt initial bauen
+        await self.build_working_prompt()
+
         logger.info(
-            f"[PromptBuilderAddOn] bereit — Template-Dir: {template_dir}, "
-            f"working prompt: '{self._working_prompt_name}'"
+            f"[PromptBuilderAddOn] bereit — "
+            f"heinzel='{self._heinzel_name}', role='{self._heinzel_role}', "
+            f"working='{self._working_prompt_name}'"
         )
 
     async def on_detach(self, heinzel) -> None:
         self._jinja_env = None
         self._prompt_addon = None
+
+    # -------------------------------------------------------------------------
+    # Working Prompt aufbauen
+    # -------------------------------------------------------------------------
+
+    async def build_working_prompt(self) -> str:
+        """base + type + instance → mechanischer Merge → working prompt.
+
+        Liest die drei Layer aus der PromptAddOn-Registry (sofern vorhanden),
+        konkateniert sie mit Trennzeile und speichert das Ergebnis als
+        '{heinzel-name}.working-prompt' zurück in die Registry.
+
+        Gibt den fertigen Text zurück.
+
+        TODO: LLM-Pass als opt-in (llm_merge: true in Config).
+        """
+        if self._prompt_addon is None:
+            return ""
+
+        layers = []
+        for layer_name in [
+            SYSTEM_PROMPT_NAME,         # system
+            self._heinzel_role,         # z.B. researcher
+            self._heinzel_name,         # z.B. riker
+        ]:
+            text = self._render_layer(layer_name)
+            if text:
+                layers.append(text)
+
+        if not layers:
+            logger.debug("[PromptBuilderAddOn] Keine Layer gefunden — working prompt leer")
+            return ""
+
+        merged = "\n\n".join(layers)
+
+        # Als working prompt in der Registry speichern
+        if self._prompt_addon.get(self._working_prompt_name) is not None:
+            await self._prompt_addon.mutate(self._working_prompt_name, "template", merged)
+        else:
+            await self._store_working_prompt(merged)
+
+        logger.info(
+            f"[PromptBuilderAddOn] working prompt gebaut aus {len(layers)} Layer(n)"
+        )
+        return merged
+
+    def get_working_prompt_text(self) -> str:
+        """Fertigen working prompt als Text zurückgeben.
+
+        Wird vom CLI-Kommando !prompt aufgerufen.
+        Gibt leeren String zurück wenn kein working prompt vorhanden.
+        """
+        if self._prompt_addon is None:
+            return ""
+        prompt = self._prompt_addon.get(self._working_prompt_name)
+        if prompt is None:
+            return ""
+        try:
+            return prompt.render()
+        except Exception as exc:
+            logger.warning(f"[PromptBuilderAddOn] Fehler beim Rendern: {exc}")
+            return ""
 
     # -------------------------------------------------------------------------
     # Pipeline Hook
@@ -111,15 +201,11 @@ class PromptBuilderAddOn(AddOn):
     async def on_context_build(
         self, ctx: PipelineContext, history: ContextHistory | None = None
     ) -> PipelineContext:
-        """ON_CONTEXT_BUILD — ctx.system_prompt setzen.
-
-        Wird vom Runner vor dem LLM-Call aufgerufen.
-        """
+        """ON_CONTEXT_BUILD — ctx.system_prompt setzen."""
         system_prompt = self.render(
             template_name=self._template_name,
             metadata=ctx.metadata if hasattr(ctx, "metadata") else {},
         )
-        # PipelineContext ist immutable — via model_copy ersetzen
         return ctx.model_copy(update={"system_prompt": system_prompt})
 
     # -------------------------------------------------------------------------
@@ -131,11 +217,9 @@ class PromptBuilderAddOn(AddOn):
         template_name: str = _DEFAULT_TEMPLATE_NAME,
         metadata: dict[str, Any] | None = None,
     ) -> str:
-        """System-Prompt rendern.
+        """System-Prompt rendern (working prompt + Turn-Kontext).
 
         Kann direkt aufgerufen werden (z.B. für Vorschau oder Tests).
-        template_name: Dateiname relativ zum Template-Verzeichnis.
-        metadata: dict mit optionalen Keys 'facts', 'skills', 'tools'.
         """
         if self._jinja_env is None:
             raise RuntimeError(
@@ -143,17 +227,13 @@ class PromptBuilderAddOn(AddOn):
             )
 
         metadata = metadata or {}
-
-        # Working prompt aus PromptAddOn holen (hot-reload-fähig)
         identity = self._get_working_prompt()
 
-        # Template laden — bei jedem Call neu (hot-reload)
         try:
             template = self._jinja_env.get_template(template_name)
         except TemplateNotFound:
             logger.warning(
-                f"[PromptBuilderAddOn] Template '{template_name}' nicht gefunden "
-                "— nutze Default"
+                f"[PromptBuilderAddOn] Template '{template_name}' nicht gefunden — nutze Default"
             )
             template = self._jinja_env.get_template(_DEFAULT_TEMPLATE_NAME)
 
@@ -164,8 +244,6 @@ class PromptBuilderAddOn(AddOn):
             skills=metadata.get("skills") or [],
             tools=metadata.get("tools") or [],
         )
-
-        # Leere Zeilen komprimieren (max. eine Leerzeile hintereinander)
         return _compress_blank_lines(result)
 
     def set_template(self, template_name: str) -> None:
@@ -177,23 +255,51 @@ class PromptBuilderAddOn(AddOn):
     # Interna
     # -------------------------------------------------------------------------
 
-    def _get_working_prompt(self) -> str:
-        """Working prompt aus PromptAddOn-Registry holen.
-
-        Fallback: leerer String (PromptBuilderAddOn funktioniert auch ohne).
-        """
+    def _render_layer(self, layer_name: str) -> str:
+        """Einzelnen Layer aus PromptAddOn rendern. Leer wenn nicht vorhanden."""
         if self._prompt_addon is None:
             return ""
-        prompt = self._prompt_addon.get(self._working_prompt_name)
+        prompt = self._prompt_addon.get(layer_name)
         if prompt is None:
             return ""
         try:
-            return prompt.render()
+            return prompt.render().strip()
         except Exception as exc:
-            logger.warning(
-                f"[PromptBuilderAddOn] Fehler beim Rendern von working prompt: {exc}"
-            )
+            logger.warning(f"[PromptBuilderAddOn] Layer '{layer_name}' Fehler: {exc}")
             return ""
+
+    async def _store_working_prompt(self, text: str) -> None:
+        """Neuen working prompt in Repository anlegen und laden."""
+        if self._prompt_addon is None:
+            return
+        # Via Repository direkt speichern
+        repo = self._prompt_addon._repository
+        data = {
+            "name": self._working_prompt_name,
+            "template": text,
+            "context": "system",
+            "variables": {},
+        }
+        repo.save(self._working_prompt_name, data)
+        await self._prompt_addon.reload_one(self._working_prompt_name)
+
+    def _get_working_prompt(self) -> str:
+        """Working prompt Text holen — intern für render()."""
+        return self.get_working_prompt_text()
+
+    def _on_prompt_changed(self, event_type, name: str, entry) -> None:
+        """PROMPT_CHANGED Listener — working prompt neu bauen wenn Layer betroffen."""
+        from addons.prompt.addon import PromptEventType
+        if event_type != PromptEventType.PROMPT_CHANGED:
+            return
+        relevant = {SYSTEM_PROMPT_NAME, self._heinzel_role, self._heinzel_name}
+        if name in relevant:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.build_working_prompt())
+            except RuntimeError:
+                pass  # Kein laufender Loop — beim nächsten on_attach gebaut
 
 
 # =============================================================================

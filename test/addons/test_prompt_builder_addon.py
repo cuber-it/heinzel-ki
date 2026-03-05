@@ -20,11 +20,20 @@ def _make_addon(template_path=None) -> PromptBuilderAddOn:
 
 
 def _make_heinzel(working_prompt_text: str = "") -> MagicMock:
-    """Fake-Heinzel mit PromptAddOn-Stub."""
+    """Fake-Heinzel mit PromptAddOn-Stub und AgentIdentity."""
     heinzel = MagicMock()
+
+    # AgentIdentity stub
+    identity = MagicMock()
+    identity.name = "riker"
+    identity.role = "assistant"
+    heinzel.config.agent = identity
 
     # PromptAddOn stub
     prompt_addon = MagicMock()
+    prompt_addon.mutate = AsyncMock()
+    prompt_addon._repository = MagicMock()
+    prompt_addon._repository.save = MagicMock()
     if working_prompt_text:
         prompt_mock = MagicMock()
         prompt_mock.render.return_value = working_prompt_text
@@ -265,3 +274,45 @@ async def test_on_context_build_immutable():
     updated = await addon.on_context_build(ctx)
     assert ctx.system_prompt == original_prompt  # Original unverändert
     assert updated is not ctx  # Neues Objekt
+
+
+# =============================================================================
+# build_working_prompt / get_working_prompt_text
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_build_working_prompt_no_layers():
+    """Ohne Layer-Prompts in Registry — leerer String, kein Fehler."""
+    addon = _make_addon()
+    heinzel = _make_heinzel()
+    # Alle get()-Calls geben None zurück (kein Layer vorhanden)
+    heinzel.addons.get.return_value.get.return_value = None
+    await addon.on_attach(heinzel)
+    result = await addon.build_working_prompt()
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_get_working_prompt_text_returns_text():
+    """get_working_prompt_text() gibt render()-Ergebnis zurück."""
+    addon = _make_addon()
+    await addon.on_attach(_make_heinzel(working_prompt_text="Ich bin Riker."))
+    # working prompt ist in Registry (get gibt Prompt-Objekt zurück)
+    text = addon.get_working_prompt_text()
+    assert text == "Ich bin Riker."
+
+
+@pytest.mark.asyncio
+async def test_get_working_prompt_text_no_addon():
+    """get_working_prompt_text() ohne PromptAddOn gibt leeren String."""
+    addon = _make_addon()
+    # Kein on_attach — _prompt_addon ist None
+    assert addon.get_working_prompt_text() == ""
+
+
+def test_working_prompt_name_uses_identity():
+    """working prompt Name folgt Namensschema {name}.working-prompt."""
+    addon = _make_addon()
+    # Vor on_attach: Default-Name
+    assert addon._working_prompt_name == "working"
