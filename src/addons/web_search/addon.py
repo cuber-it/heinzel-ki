@@ -106,12 +106,17 @@ class WebSearchAddOn(AddOn):
 
     async def on_attach(self, heinzel) -> None:
         self._backend = self._make_backend(self._backend_name)
+        # Als lokale Tools beim MCPToolsRouter registrieren
+        # → LLM kann autonom entscheiden wann er sucht (wie Claude/ChatGPT)
+        self._register_tools(heinzel)
+
         logger.info(
             f"[WebSearchAddOn] bereit — Backend: '{self._backend_name}', "
             f"Targets: {list(self._targets.keys())}"
         )
 
     async def on_detach(self, heinzel) -> None:
+        self._unregister_tools(heinzel)
         if self._backend:
             await self._backend.close()
         self._backend = None
@@ -214,6 +219,67 @@ class WebSearchAddOn(AddOn):
     def _make_backend(self, name: str) -> SearchBackend:
         config = self._backends_config.get(name, {})
         return create_backend(name, config)
+
+    def _register_tools(self, heinzel) -> None:
+        """web_search und fetch_page als lokale Tools beim MCPToolsRouter anmelden."""
+        router = heinzel.addons.get("mcp_tools_router")
+        if router is None:
+            logger.debug("[WebSearchAddOn] kein MCPToolsRouter — Tool-Registrierung übersprungen")
+            return
+
+        async def _handle_web_search(args: dict) -> str:
+            query = args.get("query", "")
+            site = args.get("site")
+            max_results = args.get("max_results", self._max_results)
+            results = await self.search(query, max_results=max_results, site=site)
+            if not results:
+                return "Keine Ergebnisse gefunden."
+            return "\n\n".join(r.as_text() for r in results)
+
+        async def _handle_fetch_page(args: dict) -> str:
+            url = args.get("url", "")
+            results = await self.fetch(url)
+            if not results:
+                return "Seite konnte nicht geladen werden."
+            return results[0].snippet
+
+        router.register_local_handler(
+            "local:web_search:search",
+            _handle_web_search,
+            description="Im Web suchen. Optional site= für Site-spezifische Suche.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Suchbegriff"},
+                    "site": {"type": "string", "description": "Optional: Domain für Site-Suche"},
+                    "max_results": {"type": "integer", "description": "Anzahl Ergebnisse (default 5)"},
+                },
+                "required": ["query"],
+            },
+        )
+        router.register_local_handler(
+            "local:web_search:fetch_page",
+            _handle_fetch_page,
+            description="Eine Webseite laden und ihren Textinhalt zurückgeben.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL der Seite"},
+                },
+                "required": ["url"],
+            },
+        )
+        logger.info("[WebSearchAddOn] Tools registriert: local:web_search:search, local:web_search:fetch_page")
+
+    def _unregister_tools(self, heinzel) -> None:
+        """Tools beim MCPToolsRouter abmelden."""
+        try:
+            router = heinzel.addons.get("mcp_tools_router")
+            if router:
+                router.unregister_local_handler("local:web_search:search")
+                router.unregister_local_handler("local:web_search:fetch_page")
+        except Exception:
+            pass
 
 
 # =============================================================================
