@@ -34,7 +34,7 @@ memory:
   compaction_strategy: summarizing   # summarizing | truncation
 
 reasoning:
-  strategy: deep_reasoning   # passthrough | deep_reasoning | chain_of_thought | auto
+  strategy: auto   # passthrough | deep_reasoning | chain_of_thought | auto
 
 logging:
   dialog_log_path: logs/dialog
