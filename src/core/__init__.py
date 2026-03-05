@@ -42,6 +42,7 @@ from .exceptions import (
 )
 from .provider import HttpLLMProvider
 from .provider_registry import ProviderRegistry
+from .addon_extension import BaseAddOnExtension, PromptBase, SkillBase
 from .router import AddOnRouter
 from .session import (
     MemoryGateInterface,
@@ -77,6 +78,10 @@ __all__ = [
     "find_config_file",
     "get_config",
     "reset_config",
+    # AddOn Extensions
+    "BaseAddOnExtension",
+    "SkillBase",
+    "PromptBase",
     # Core
     "AddOnRouter",
     "Runner",
