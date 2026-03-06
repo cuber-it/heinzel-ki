@@ -1,5 +1,55 @@
 # Changelog
 
+## [mvp-003] — 2026-03-05 — HNZ-003-0012 WebSearchAddOn (Commit f533597)
+
+- web_search/models.py: SearchResult, SearchIntent, IntentType (WEB/SITE/FETCH/NONE)
+- web_search/backends.py: SearchBackend (ABC), SearXNGBackend, DuckDuckGoBackend, FetchBackend, create_backend()
+- web_search/addon.py: WebSearchAddOn — Intent-Parser (regex), on_context_build, set_backend(), set_active_target(), add_target()
+- heinzel_cli.py: !search status/backend/target/add Kommando
+- test: 35 Tests — alle Intent-Typen, Priorität, Target-Auflösung, Context-Injection
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0014/0006 Skills (Commit 373b80c)
+
+- src/addons/skills/repository.py: SkillRepository (ABC), YamlSkillRepository
+- src/addons/skills/addon.py: SkillsAddOn — Registry, get_active(), Trigger-Match, hot-reload, load/unload/reload_skill
+- src/addons/skills/addon.py: SkillLoaderAddOn — ON_CONTEXT_BUILD → ctx.metadata[skills]
+- src/addons/skills/addon.py: SkillValidationError, _matches() case-insensitive regex
+- Bugfix: PipelineContext.user_input → parsed_input in addon + tests
+- test/addons/test_skills_addon.py: 31 Tests
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0005 PromptBuilder Erweiterung (Commit 11eeb20)
+
+- addon.py: build_working_prompt() — system+role+name Layer → Merge → {name}.working-prompt
+- addon.py: get_working_prompt_text() — working prompt abrufbar für CLI
+- addon.py: PROMPT_CHANGED Listener — working prompt bei Layer-Änderung neu bauen
+- addon.py: Namensschema aus AgentIdentity (name, role)
+- heinzel_cli.py: !prompt Kommando — working prompt anzeigen
+- 25 Tests (vorher 21)
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0005 PromptBuilderAddOn (Commit e915cc6)
+
+- src/addons/prompt_builder/addon.py: PromptBuilderAddOn — on_context_build, render(), set_template(), _get_working_prompt()
+- src/addons/prompt_builder/addon.py: _format_now() Deutsch, _compress_blank_lines()
+- src/addons/prompt_builder/templates/default.j2: Default-Template mit identity, Zeitkontext, Facts, Skills, Tools
+- test/addons/test_prompt_builder_addon.py: 21 Tests
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0015 PromptAddOn (Commit 97e3fe7)
+
+- src/addons/prompt/repository.py: PromptRepository (ABC), YamlPromptRepository — load_all/load_one/save/exists/list_names
+- src/addons/prompt/addon.py: PromptAddOn — Registry, render(), hot_reload(), reload_one(), mutate(), Listener-Pattern
+- src/addons/prompt/addon.py: PromptEventType (PROMPT_CHANGED/LOADED/REMOVED) — TODO EventBus
+- src/addons/prompt/__init__.py: Exports
+- test/addons/test_prompt_addon.py: 22 Tests — Repo, Lifecycle, Render, HotReload, Mutate, Events
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0009 AddOn Basis-Architektur (Commit b190d0c)
+
+- requirements.txt: jinja2>=3.1.0 ergänzt
+- src/core/addon_extension.py: BaseAddOnExtension (ABC) mit name/version/load()/unload()
+- src/core/addon_extension.py: SkillBase — description, trigger_patterns, system_prompt_fragment, tools; load/unload als No-Op
+- src/core/addon_extension.py: PromptBase — Jinja2-Template, variables, context (system/user/few-shot); StrictUndefined; render() mit Default-Merge
+- src/core/__init__.py: BaseAddOnExtension, SkillBase, PromptBase exportiert
+- test/core/test_addon_extension.py: 17 Tests — ABC-Enforcement, Defaults, Mutable-Isolation, Lifecycle, Rendering, StrictUndefined, Import
+
 Alle nennenswerten Änderungen werden hier dokumentiert.
 Format: `[MVP-XX] — Datum — Kurzbeschreibung`, Details darunter.
 
@@ -458,3 +508,79 @@ Commit: 5dc0aaa
 - StrategyRegistry.set_default() wirft KeyError fuer unbekannte Namen (fail-fast)
 - set_strategy(obj) registriert + setzt in einem Schritt
 - assert_strategy_compliance() als wiederverwendbares Fixture fuer HNZ-003+ Strategien
+
+## [mvp-003] — 2026-03-05 — MCPToolsRouter local handlers (Commit 19c6bf1)
+
+- router.py: register_local_handler() — async callable direkt im Router, kein MCP-Server nötig
+- router.py: unregister_local_handler() — Cleanup bei on_detach
+- router.py: call() — lokale Handler haben Vorrang vor MCP-Dispatch, kein Approval-Flow
+- web_search/addon.py: _register_tools() — local:web_search:search + local:web_search:fetch_page
+- LLM kann autonom suchen/fetchen ohne explizite User-Phrasen (wie Claude/ChatGPT)
+- test_mcp_router.py: 7 neue Tests für local handlers inkl. WebSearchAddOn Integration
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0011 MattermostAddOn (Commit 0e52b6f)
+
+- mattermost/models.py: MattermostMessage, MattermostReply
+- mattermost/client.py: MattermostClient — REST (httpx) + WebSocket (websockets), kein externes MM-Paket
+- mattermost/addon.py: MattermostAddOn — Background WS-Task, exponential backoff reconnect
+- mention_only-Filter, Thread-Reply via root_id, @mention-Stripping vor LLM-Call
+- post() / post_to() für Agent-to-Agent Kommunikation
+- 23 Tests
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0001 DatabaseAddOn (Commit a158fe9)
+
+- database/base.py: DatabaseAddOn (ABC) — execute(), fetch(), fetchrow(), migrate(); SCHEMA_SQL
+- database/sqlite.py: SQLiteAddOn — aiosqlite, :memory: für Tests, FK-Pragma, last_insert_id()
+- database/postgres.py: PostgreSQLAddOn — asyncpg Pool, SERIAL-Adaptation, Import-Guard
+- Schema: sessions, exchanges, facts — idempotent via IF NOT EXISTS
+- 16 Tests — Lifecycle, Migration (3x idempotent), alle Tabellen, UNIQUE/Upsert, ABC-Enforcement
+
+## [mvp-003] — 2026-03-05 — HNZ-003-0004 DialogLoggerAddOn (Commit 2b813c2)
+
+- dialog_logger/addon.py: alle Hooks (input, output, thinking, tool_request, tool_result, error)
+- Pfadschema: {log_dir}/{heinzel_id}/{YYYY-MM-DD}/{session_id}.jsonl
+- Crash-Safety: os.fsync() nach jedem Write
+- Rotation bei Größenüberschreitung (rotation_size_mb)
+- Retention: alte Dateien beim Start löschen (retention_days)
+- read_session_log(), search_logs() mit Datumsfilter
+- 18 Tests inkl. Crash-Safety-Nachweis via fsync-Mock
+
+## [mvp-003] — 2026-03-05 — HeinzelLoader / Startup (Commit 5faf694)
+
+- core/startup.py: HeinzelLoader — heinzel.yaml → Runner in einem Aufruf
+- AddOn-Factory-Registry: database, dialog_logger, prompt, prompt_builder, skills, skill_loader, web_search, mcp_tools_router, mattermost
+- Dependency-aware Reihenfolge, Lifecycle-only AddOns (ohne Hooks)
+- ENV-Substitution: ${VAR} in YAML rekursiv
+- register_addon_factory() für eigene AddOns
+- core/provider.py: NoopProvider — Fallback ohne LLM-Infra
+- core/runner.py: runner.addons.get(name), runner.runner (Self-Ref)
+- 18 Tests
+
+## [mvp-003] — 2026-03-05 — Alle In-Progress-Karten (Commits 4e38835…c727d9f)
+
+- core/addon_loader.py: HNZ-003-0007 AddOnLoader — Hot-Reload, load_from_file/package, Dependency-Check, force-unload nach 5s, 17 Tests
+- addons/command/addon.py: CommandAddOn I — !-Parsing (shlex), CommandRegistry, Dispatch, !help, halt-Signal, 19 Tests
+- addons/command/addon2.py: CommandAddOn II — AliasStore, Ketten (&&, fail-fast), MacroStore (SQLite-persistent), 25 Tests
+- addons/scheduler/: HNZ-003-0016 SchedulerAddOn — croniter, asyncio-Loop, runner.chat(), Mattermost-Post, from_config(), 14 Tests
+- addons/jupyter/: HNZ-003-0013 JupyterAddOn — JupyterClient REST API, ExecutionResult, local:jupyter:execute_code Tool, 24 Tests
+- Gesamt: 818/818 Tests grün
+
+## [mvp-003] — 2026-03-05 — BuiltinCommandsAddOn (Commit 7df357d)
+
+- addons/command/builtins.py: BuiltinCommandsAddOn — registriert in CommandRegistry
+- !history [n], !! (redo), !history redo [n]
+- !sessions [limit], !resume <id>, !new, !end
+- !fact set/get/list/delete/clear, !facts (Alias), optional DB-Persistenz
+- !skill list/load/unload/reload
+- !provider [status|switch|list], !model [<n>|list]
+- !status (Session, Provider, Kontext-Tokens, AddOns), !addons, !quit, !exit
+- 20 Tests
+
+## [mvp-003] — 2026-03-05 — heinzel_cli_2 + HeinzelLoader-Fixes (Commit f8a2575)
+
+- src/frontend/heinzel_cli_2.py: neue CLI — HeinzelLoader baut Runner, alle AddOns aus YAML
+- config/heinzel_cli_2.yaml: Beispiel-Config mit allen AddOns (SQLite, dialog_logger, prompt, skills, web_search, mcp_tools_router)
+- REPL: !-Input → runner.chat() (CommandAddOn dispatcht intern), Rest → runner.chat_stream()
+- CommandAddOn + BuiltinCommandsAddOn werden automatisch ergänzt wenn nicht in Config
+- Kein if/elif-Gebirge — 183 Zeilen gesamt
+- src/core/startup.py: HttpLLMProvider-Kwarg-Fix (url→base_url+name), AddOns ohne Hooks bekommen ON_SESSION_START statt leeres Set (Router-Kompatibilität), else-Branch entfernt

@@ -271,7 +271,8 @@ class HttpLLMProvider(LLMProvider):
                             chunk = json.loads(data)
                             if chunk.get("type") == "content_delta" and chunk.get("content"):
                                 yield chunk["content"]
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as exc:
+                            logger.debug("SSE-Chunk nicht parsebar: %s (data=%s)", exc, data[:80])
                             continue
         except httpx.HTTPStatusError as exc:
             raise ProviderError(
@@ -284,3 +285,17 @@ class HttpLLMProvider(LLMProvider):
                 f"stream fehlgeschlagen: {self._name}",
                 detail=str(exc),
             ) from exc
+
+
+class NoopProvider(LLMProvider):
+    """Fallback-Provider — gibt immer leere Antwort zurück.
+
+    Nützlich wenn kein LLM konfiguriert ist (Tests, Dry-Run).
+    """
+
+    async def chat(self, messages, system_prompt="", model="", **kwargs) -> str:
+        return ""
+
+    async def stream(self, messages, system_prompt="", model="", **kwargs):
+        return
+        yield  # macht es zum Generator

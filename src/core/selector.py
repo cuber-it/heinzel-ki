@@ -31,17 +31,25 @@ _DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config" / "selector_con
 # =============================================================================
 
 class SelectorConfig:
-    """YAML-Config — wird bei jedem select()-Call neu geladen (hot-reload)."""
+    """YAML-Config mit mtime-basiertem Cache (hot-reload bei Dateiänderung)."""
 
     def __init__(self, path: Path = _DEFAULT_CONFIG) -> None:
         self._path = path
+        self._cache: dict = {}
+        self._cached_mtime: float = 0.0
 
     def load(self) -> dict:
         try:
-            return yaml.safe_load(self._path.read_text(encoding="utf-8")) or {}
+            mtime = self._path.stat().st_mtime
+            if mtime != self._cached_mtime:
+                self._cache = yaml.safe_load(self._path.read_text(encoding="utf-8")) or {}
+                self._cached_mtime = mtime
+            return self._cache
+        except FileNotFoundError:
+            return self._cache or {}
         except Exception as e:
             logger.warning("selector_config.yaml nicht lesbar: %s — Defaults", e)
-            return {}
+            return self._cache or {}
 
     @property
     def simple_max_len(self) -> int:
@@ -193,7 +201,7 @@ class HybridSelector(StrategySelector):
                 response = await provider.chat(
                     messages=[{"role": "user", "content": text}],
                     system_prompt=_CLASSIFY_SYSTEM,
-                    model=provider.default_model,
+                    model=getattr(provider, "current_model", ""),
                 )
                 word = re.search(r"\b(simple|medium|complex)\b", response.lower())
                 if word:

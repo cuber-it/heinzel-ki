@@ -46,6 +46,7 @@ class MCPToolsRouter(AddOn):
         self._tools: dict[str, KnownTool] = {}       # address_str -> KnownTool
         self._servers: dict[str, ServerEntry] = {}   # 'target:server' -> ServerEntry
         self._ask_once_cache: dict[str, bool] = {}   # address_str -> bool (Session)
+        self._local_handlers: dict[str, Any] = {}    # address_str -> async callable
 
     # -------------------------------------------------------------------------
     # Tool-Registry (Discovery)
@@ -54,6 +55,35 @@ class MCPToolsRouter(AddOn):
     def register(self, tool: KnownTool) -> None:
         """Registriert ein bekanntes Tool. Wird vom MCPDiscovererAddOn aufgerufen (HNZ-004)."""
         self._tools[str(tool.address)] = tool
+
+    def register_local_handler(
+        self, address: str, handler, description: str = "", input_schema: dict | None = None
+    ) -> None:
+        """Registriert einen lokalen Tool-Handler (kein MCP-Server nötig).
+
+        handler: async callable(args: dict) -> str
+        Wird in call() vor dem MCP-Dispatch geprüft.
+        AddOns wie WebSearchAddOn nutzen dies um sich als LLM-Tools anzubieten.
+        """
+        self._local_handlers[address] = handler
+        # Auch als KnownTool registrieren damit list_tools() vollständig ist
+        parts = address.split(":")
+        tool_addr = ToolAddress(
+            target=parts[0] if len(parts) > 0 else "local",
+            server=parts[1] if len(parts) > 1 else "local",
+            tool=parts[2] if len(parts) > 2 else address,
+        )
+        self._tools[address] = KnownTool(
+            address=tool_addr,
+            endpoint_url="local",
+            description=description,
+            input_schema=input_schema or {},
+        )
+
+    def unregister_local_handler(self, address: str) -> None:
+        """Lokalen Handler und KnownTool-Eintrag entfernen."""
+        self._local_handlers.pop(address, None)
+        self._tools.pop(address, None)
 
     def unregister(self, address: str) -> None:
         """Entfernt ein Tool aus der Discovery-Registry."""
@@ -197,6 +227,14 @@ class MCPToolsRouter(AddOn):
         Abgelehnt  -> ToolResult(error='abgelehnt')
         Pending    -> ToolResult(error='approval_pending')
         """
+        # Lokaler Handler? Direkt ausführen, kein MCP-Dispatch
+        if address in self._local_handlers:
+            try:
+                result_text = await self._local_handlers[address](args)
+                return ToolResult(address=address, result=result_text)
+            except Exception as exc:
+                return ToolResult(address=address, error=str(exc))
+
         tool = self.find_tool(address)
         if tool is None:
             return ToolResult(address=address, unknown=True)

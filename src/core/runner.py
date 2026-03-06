@@ -81,6 +81,7 @@ class Runner:
         self._dialog_log = _DialogLogger(self._agent_id, self._config)
         self._pending_provider: LLMProvider | None = None   # turn-safe swap
         self._in_turn: bool = False                         # laufender LLM-Call
+        self._provider_registry = None  # optional, gesetzt von HeinzelLoader wenn konfiguriert
         self._reasoning_strategy_name: str = "auto"  # "auto" = Selector entscheidet
         self._strategy_selector: StrategySelector = HybridSelector(
             feedback_store=SqliteFeedbackStore()
@@ -116,6 +117,19 @@ class Runner:
     @property
     def addon_router(self) -> AddOnRouter:
         return self._router
+
+    @property
+    def addons(self) -> "_AddOnRegistry":
+        """Zugriff auf registrierte AddOns per Name.
+
+        Verwendung: heinzel.addons.get("database")
+        """
+        return _AddOnRegistry(self._addons)
+
+    @property
+    def runner(self) -> "Runner":
+        """Self-Referenz — für AddOns die runner-Ref brauchen (z.B. MattermostAddOn)."""
+        return self
 
     @property
     def session_manager(self) -> SessionManager:
@@ -247,7 +261,9 @@ class Runner:
         for addon in self._addons:
             try:
                 await addon.on_attach(self)
-            except Exception as exc:
+            except AddOnError:
+                raise
+            except (OSError, ValueError, TypeError, RuntimeError) as exc:
                 logger.error("on_attach fehlgeschlagen fuer %s: %s", addon, exc)
                 raise AddOnError(f"on_attach fehlgeschlagen: {exc}") from exc
         self._connected = True
@@ -258,7 +274,7 @@ class Runner:
         for addon in reversed(self._addons):
             try:
                 await addon.on_detach(self)
-            except Exception as exc:
+            except (AddOnError, OSError, ValueError, TypeError, RuntimeError) as exc:
                 logger.error("on_detach fehlgeschlagen fuer %s: %s", addon, exc)
         self._connected = False
         self._dialog_log.close()
@@ -507,19 +523,13 @@ class Runner:
             logger.warning("Handover-LLM-Call fehlgeschlagen: %s", exc)
             return f"(LLM-Handover fehlgeschlagen: {exc})"
 
-    async def _maybe_compact(
+    def _should_compact(
         self,
         working_memory: WorkingMemory,
-        session_id: str,
-    ) -> HandoverContext | None:
-        """Compaction-Monitor: wird nach jedem Turn aufgerufen.
+    ) -> str:
+        """Prüft ob Compaction nötig ist.
 
-        Schwellen (Config: memory.compact_threshold / memory.roll_threshold):
-            compact_threshold (default 0.80): compact() ausfuehren
-            roll_threshold    (default 0.95): Rolling Session einleiten
-
-        Gibt HandoverContext zurueck wenn gerollt wurde, sonst None.
-        Der Aufrufer feuert ON_SESSION_ROLL.
+        Returns: 'none', 'compact' oder 'roll'.
         """
         mem_cfg = self._config.get("memory", {})
         compact_threshold = float(mem_cfg.get("compact_threshold", 0.80))
@@ -529,81 +539,101 @@ class Runner:
         tokens = working_memory.estimated_tokens()
         ratio = tokens / budget.max_tokens if budget.max_tokens else 0.0
 
-        if ratio < compact_threshold:
-            return None   # Alles gut
-
         if ratio >= roll_threshold:
-            # Rolling Session: LLM baut Handover, dann Context-Reset
-            logger.info(
-                "Rolling Session: %.0f%% Kontext — starte Handover",
-                ratio * 100,
-            )
-            n = 9999
-            turns = await working_memory.get_recent_turns(n)
-            summary = await self._build_handover_summary(
-                turns, session_id
-            )
+            return "roll"
+        if ratio >= compact_threshold:
+            return "compact"
+        return "none"
 
-            policy = RollingSessionRegistry.get_default()
-            from .compaction import CompactionResult
-            compaction_result = CompactionResult(
-                kept_turns=(),
-                dropped_turns=tuple(turns),
-                summary=summary,
-                tokens_before=tokens,
-                tokens_after=0,
-                tokens_saved=tokens,
-                critical_preserved=True,
-            )
-            session = self._session_manager.active_session
-            if session is None:
-                return None
+    async def _perform_compaction(
+        self,
+        working_memory: WorkingMemory,
+    ) -> None:
+        """Normale Compaction: Working Memory kompaktieren."""
+        tokens = working_memory.estimated_tokens()
+        budget = self._compaction_budget()
+        ratio = tokens / budget.max_tokens if budget.max_tokens else 0.0
+        logger.info("Compaction: %.0f%% Kontext — kompaktiere", ratio * 100)
+        await working_memory.compact()
 
-            handover = await policy.create_handover(
-                session, compaction_result
-            )
-            # Handover-Summary in HandoverContext eintragen
-            handover = handover.model_copy(
-                update={"summary": summary}
-            )
-
-            # Rolling Session via SessionManager
-            await self._session_manager.end_session(session_id)
-            new_session = await self._session_manager.create_session(
-                agent_id=self._agent_id,
-                user_id=session.user_id,
-            )
-            # Handover in neue Session-Metadata
-            from .session_noop import NoopSessionManager
-            sm = self._session_manager
-            if isinstance(sm, NoopSessionManager):
-                sm._sessions[new_session.id] = new_session.model_copy(
-                    update={"metadata": {"handover": handover}}
-                )
-                sm._active = sm._sessions[new_session.id]
-            # Working Memory der neuen Session mit Handover-Turn befuellen
-            new_wm = await self._session_manager.get_working_memory(
-                new_session.id)
-            from .session import Turn as _Turn
-            handover_turn = _Turn(
-                session_id=new_session.id,
-                raw_input="[Session-Handover]",
-                final_response=summary,
-            )
-            await new_wm.add_turn(handover_turn)
-
-            logger.info(
-                "Rolling Session abgeschlossen — neue Session %s",
-                new_session.id[:8],
-            )
-            return handover
-
-        # Normale Compaction
+    async def _initiate_rolling_session(
+        self,
+        working_memory: WorkingMemory,
+        session_id: str,
+    ) -> HandoverContext | None:
+        """Rolling Session: LLM baut Handover, Context-Reset, neue Session."""
+        budget = self._compaction_budget()
+        tokens = working_memory.estimated_tokens()
+        ratio = tokens / budget.max_tokens if budget.max_tokens else 0.0
         logger.info(
-            "Compaction: %.0f%% Kontext — kompaktiere",
+            "Rolling Session: %.0f%% Kontext — starte Handover",
             ratio * 100,
         )
-        await working_memory.compact()
+        turns = await working_memory.get_recent_turns(9999)
+        summary = await self._build_handover_summary(turns, session_id)
+
+        policy = RollingSessionRegistry.get_default()
+        from .compaction import CompactionResult
+        compaction_result = CompactionResult(
+            kept_turns=(),
+            dropped_turns=tuple(turns),
+            summary=summary,
+            tokens_before=tokens,
+            tokens_after=0,
+            tokens_saved=tokens,
+            critical_preserved=True,
+        )
+        session = self._session_manager.active_session
+        if session is None:
+            return None
+
+        handover = await policy.create_handover(session, compaction_result)
+        handover = handover.model_copy(update={"summary": summary})
+
+        # Rolling Session via SessionManager
+        await self._session_manager.end_session(session_id)
+        new_session = await self._session_manager.create_session(
+            agent_id=self._agent_id,
+            user_id=session.user_id,
+        )
+        # Handover in neue Session-Metadata
+        from .session_noop import NoopSessionManager
+        sm = self._session_manager
+        if isinstance(sm, NoopSessionManager):
+            sm._sessions[new_session.id] = new_session.model_copy(
+                update={"metadata": {"handover": handover}}
+            )
+            sm._active = sm._sessions[new_session.id]
+        # Working Memory der neuen Session mit Handover-Turn befuellen
+        new_wm = await self._session_manager.get_working_memory(new_session.id)
+        from .session import Turn as _Turn
+        handover_turn = _Turn(
+            session_id=new_session.id,
+            raw_input="[Session-Handover]",
+            final_response=summary,
+        )
+        await new_wm.add_turn(handover_turn)
+
+        logger.info(
+            "Rolling Session abgeschlossen — neue Session %s",
+            new_session.id[:8],
+        )
+        return handover
+
+    async def _maybe_compact(
+        self,
+        working_memory: WorkingMemory,
+        session_id: str,
+    ) -> HandoverContext | None:
+        """Compaction-Monitor: wird nach jedem Turn aufgerufen.
+
+        Gibt HandoverContext zurueck wenn gerollt wurde, sonst None.
+        """
+        action = self._should_compact(working_memory)
+        if action == "roll":
+            return await self._initiate_rolling_session(working_memory, session_id)
+        if action == "compact":
+            await self._perform_compaction(working_memory)
         return None
 
     async def on_before_chat(self, message: str) -> str:
@@ -638,3 +668,20 @@ class Runner:
             except Exception as exc:
                 logger.error("Config-Ladefehler (%s): %s", config_path, exc)
         return {}
+
+
+class _AddOnRegistry:
+    """Thin Wrapper um die AddOn-Liste — ermöglicht .get(name)-Zugriff."""
+
+    def __init__(self, addons: list) -> None:
+        self._addons = addons
+
+    def get(self, name: str):
+        """AddOn per Name holen. None wenn nicht gefunden."""
+        for addon in self._addons:
+            if getattr(addon, "name", None) == name:
+                return addon
+        return None
+
+    def all(self) -> list:
+        return list(self._addons)

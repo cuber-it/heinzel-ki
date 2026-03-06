@@ -567,3 +567,98 @@ class TestApprovalInHook:
         result = await self.router.on_tool_request(ctx)
         assert len(result.modified_ctx.tool_results) == 1
         assert result.modified_ctx.tool_results[0].error == "MCP not configured"
+
+
+class TestLocalHandlers:
+    def setup_method(self):
+        self.router = NoopMCPToolsRouter()
+
+    @pytest.mark.asyncio
+    async def test_register_and_call_local_handler(self):
+        """Lokaler Handler wird direkt aufgerufen, kein MCP-Dispatch."""
+        async def my_handler(args: dict) -> str:
+            return f"Ergebnis: {args.get('query', '')}"
+
+        self.router.register_local_handler(
+            "local:test:search", my_handler, description="Test"
+        )
+        result = await self.router.call("local:test:search", {"query": "Python"})
+        assert result.result == "Ergebnis: Python"
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_local_handler_error_caught(self):
+        """Fehler im Handler → ToolResult mit error, kein Exception-Propagation."""
+        async def bad_handler(args: dict) -> str:
+            raise ValueError("Kaputt")
+
+        self.router.register_local_handler("local:test:bad", bad_handler)
+        result = await self.router.call("local:test:bad", {})
+        assert result.error is not None
+        assert "Kaputt" in result.error
+
+    def test_local_handler_appears_in_list_tools(self):
+        """Lokal registrierte Tools tauchen in list_tools() auf."""
+        async def h(args): return ""
+        self.router.register_local_handler("local:ws:search", h, description="Web-Suche")
+        names = [str(t.address) for t in self.router.list_tools()]
+        assert "local:ws:search" in names
+
+    def test_unregister_local_handler(self):
+        """Nach unregister ist der Handler weg."""
+        async def h(args): return ""
+        self.router.register_local_handler("local:ws:search", h)
+        self.router.unregister_local_handler("local:ws:search")
+        assert self.router.find_tool("local:ws:search") is None
+        assert "local:ws:search" not in self.router._local_handlers
+
+    @pytest.mark.asyncio
+    async def test_local_handler_skips_approval(self):
+        """Lokale Handler umgehen den Approval-Flow."""
+        async def h(args): return "ok"
+        self.router.register_local_handler("local:ws:search", h)
+        # Kein ServerEntry registriert — würde bei echtem Tool ALWAYS_DENY triggern
+        result = await self.router.call("local:ws:search", {})
+        assert result.result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_web_search_addon_registers_tools(self):
+        """WebSearchAddOn registriert seine Tools beim Router in on_attach."""
+        from addons.web_search import WebSearchAddOn
+        from unittest.mock import MagicMock, AsyncMock
+
+        addon = WebSearchAddOn(backend_name="duckduckgo")
+        mock_backend = AsyncMock()
+        mock_backend.name = "duckduckgo"
+        mock_backend.search = AsyncMock(return_value=[])
+        mock_backend.close = AsyncMock()
+        addon._backend = mock_backend
+
+        heinzel = MagicMock()
+        heinzel.addons.get = lambda name: self.router if name == "mcp_tools_router" else None
+
+        await addon.on_attach(heinzel)
+
+        names = [str(t.address) for t in self.router.list_tools()]
+        assert "local:web_search:search" in names
+        assert "local:web_search:fetch_page" in names
+
+    @pytest.mark.asyncio
+    async def test_web_search_addon_unregisters_on_detach(self):
+        """WebSearchAddOn räumt beim Detach auf."""
+        from addons.web_search import WebSearchAddOn
+        from unittest.mock import MagicMock, AsyncMock
+
+        addon = WebSearchAddOn(backend_name="duckduckgo")
+        mock_backend = AsyncMock()
+        mock_backend.search = AsyncMock(return_value=[])
+        mock_backend.close = AsyncMock()
+        addon._backend = mock_backend
+
+        heinzel = MagicMock()
+        heinzel.addons.get = lambda name: self.router if name == "mcp_tools_router" else None
+
+        await addon.on_attach(heinzel)
+        await addon.on_detach(heinzel)
+
+        assert self.router.find_tool("local:web_search:search") is None

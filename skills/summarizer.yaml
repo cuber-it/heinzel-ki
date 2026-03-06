@@ -1,0 +1,18 @@
+name: summarizer
+version: "1.0"
+description: Zusammenfassungen und Destillation von Texten.
+instructions: |
+  Du fasst Texte praezise zusammen. Regeln:
+  - Fokus auf Fakten, Entscheidungen und Ergebnisse
+  - Keine Wiederholung, keine Fuellwoerter
+  - Struktur: Kernaussage zuerst, Details danach
+  - Bei langen Texten: Bullet Points statt Fliesstext
+  - Immer in der Sprache des Originals antworten
+trigger_patterns:
+  - zusammenfass
+  - summary
+  - fasse zusammen
+  - tldr
+  - kernaussage
+tools: []
+examples: []
