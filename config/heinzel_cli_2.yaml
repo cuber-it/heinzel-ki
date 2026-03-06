@@ -80,6 +80,13 @@ addons:
   # MCP Tools (Noop bis HNZ-004 implementiert)
   mcp_tools_router: {}
 
+  # Scheduler (optional — proaktive Cron-Jobs)
+  # scheduler:
+  #   jobs:
+  #     - name: morning-briefing
+  #       schedule: '0 8 * * *'
+  #       prompt: 'Erstelle ein Morning Briefing'
+
   # Mattermost (optional — auskommentiert für reine CLI-Nutzung)
   # mattermost:
   #   url: http://services:12002

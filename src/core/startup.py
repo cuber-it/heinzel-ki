@@ -90,6 +90,7 @@ _HOOKS: dict[str, set[HookPoint]] = {
     "skill_loader": {HookPoint.ON_CONTEXT_BUILD},
     "web_search": {HookPoint.ON_CONTEXT_BUILD},
     "mcp_tools_router": {HookPoint.ON_TOOL_REQUEST},
+    "scheduler": {HookPoint.ON_SESSION_START},
     "mattermost": {HookPoint.ON_SESSION_START},
 }
 
@@ -102,6 +103,7 @@ _ADDON_ORDER = [
     "skill_loader",
     "web_search",
     "mcp_tools_router",
+    "scheduler",
     "mattermost",
 ]
 
@@ -174,6 +176,19 @@ def _build_mcp_tools_router(cfg: dict, config: AgentConfig) -> Any:
     return NoopMCPToolsRouter()
 
 
+def _build_scheduler(cfg: dict, config: AgentConfig) -> Any:
+    from addons.scheduler.addon import SchedulerAddOn, ScheduledJob
+    jobs = []
+    for entry in cfg.get("jobs", []):
+        jobs.append(ScheduledJob(
+            name=entry["name"],
+            schedule=entry["schedule"],
+            prompt=entry["prompt"],
+            channel=entry.get("channel"),
+        ))
+    return SchedulerAddOn(jobs=jobs)
+
+
 def _build_mattermost(cfg: dict, config: AgentConfig) -> Any:
     from addons.mattermost import MattermostAddOn
     return MattermostAddOn(
@@ -195,6 +210,7 @@ _DEFAULT_FACTORIES: dict[str, Callable] = {
     "skill_loader": _build_skill_loader,
     "web_search": _build_web_search,
     "mcp_tools_router": _build_mcp_tools_router,
+    "scheduler": _build_scheduler,
     "mattermost": _build_mattermost,
 }
 
@@ -242,21 +258,7 @@ class HeinzelLoader:
 
     def _apply_reasoning(self, runner: Runner) -> None:
         """Reasoning-Strategie aus Config setzen."""
-        strategy_name = self._config.addons.get("reasoning", {})
-        if not strategy_name:
-            # aus root-level reasoning-Section
-            raw = getattr(self._config, "_raw", {})
-            strategy_name = ""
-        # AgentConfig hat kein reasoning-Feld — aus raw YAML holen
-        import yaml
-        if self._config_path:
-            try:
-                raw = yaml.safe_load(open(self._config_path).read()) or {}
-                strategy_name = raw.get("reasoning", {}).get("strategy", "passthrough")
-            except Exception:
-                strategy_name = "passthrough"
-        else:
-            strategy_name = "passthrough"
+        strategy_name = runner._config.get("reasoning", {}).get("strategy", "passthrough")
 
         try:
             runner.set_strategy(strategy_name)
@@ -275,6 +277,7 @@ class HeinzelLoader:
             provider=provider,
             name=cfg.agent.name,
             agent_id=cfg.agent.id,
+            config_path=self._config_path,
         )
 
     def _register_addons(self, runner: Runner) -> None:
