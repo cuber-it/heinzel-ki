@@ -201,7 +201,7 @@ class HybridSelector(StrategySelector):
                 response = await provider.chat(
                     messages=[{"role": "user", "content": text}],
                     system_prompt=_CLASSIFY_SYSTEM,
-                    model=provider.default_model,
+                    model=getattr(provider, "current_model", ""),
                 )
                 word = re.search(r"\b(simple|medium|complex)\b", response.lower())
                 if word:

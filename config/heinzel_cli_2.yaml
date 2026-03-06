@@ -16,10 +16,10 @@ agent:
 
 # Provider: welcher default, Fallback auf NoopProvider wenn nicht erreichbar
 provider:
-  default: anthropic
+  default: openai
 
 providers:
-  anthropic:
+  openai:
     url: http://thebrain:12101
     name: o3
   # openai:
