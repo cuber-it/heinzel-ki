@@ -86,3 +86,10 @@ class _DialogLogger:
             except Exception:
                 pass
             self._file = None
+
+    def __del__(self) -> None:
+        if self._file is not None:
+            try:
+                self._file.close()
+            except Exception:
+                pass

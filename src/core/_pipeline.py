@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from .exceptions import AddOnError
 from .models import AddOnResult, ContextHistory, HookPoint, PipelineContext
 from .session import Turn, WorkingMemory
 from ._provider_bridge import call_provider
@@ -333,7 +334,7 @@ async def dispatch_and_apply(
         results: list[AddOnResult] = await heinzel._router.dispatch(
             hook, ctx, ctx_history
         )
-    except Exception as exc:
+    except (AddOnError, OSError, ValueError, TypeError, RuntimeError) as exc:
         logger.error("Dispatch-Fehler bei %s: %s", hook, exc, exc_info=True)
         ctx = ctx.evolve(
             phase=HookPoint.ON_ERROR,

@@ -271,7 +271,8 @@ class HttpLLMProvider(LLMProvider):
                             chunk = json.loads(data)
                             if chunk.get("type") == "content_delta" and chunk.get("content"):
                                 yield chunk["content"]
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as exc:
+                            logger.debug("SSE-Chunk nicht parsebar: %s (data=%s)", exc, data[:80])
                             continue
         except httpx.HTTPStatusError as exc:
             raise ProviderError(
