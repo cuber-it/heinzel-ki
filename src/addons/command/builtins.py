@@ -149,7 +149,7 @@ class BuiltinCommandsAddOn(AddOn):
                 return CommandResult(success=False, message="Kein Runner verfügbar.")
             limit = int(ctx.args[0]) if ctx.args else 10
             sm = runner._session_manager
-            sessions = await sm.list_sessions(limit=limit)
+            sessions = await sm.list_sessions(agent_id=runner._agent_id, limit=limit)
             if not sessions:
                 return CommandResult(message="Keine Sessions gefunden.")
             lines = []
