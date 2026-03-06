@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.models import HookPoint
 from core.startup import HeinzelLoader
-from addons.command.addon import CommandAddOn
+from addons.command.addon2 import CommandAddOnII
 from addons.command.builtins import BuiltinCommandsAddOn
 
 
@@ -147,7 +147,7 @@ async def build_runner(config_path: str | None, provider_override: str | None):
 
     # CommandAddOn + BuiltinCommandsAddOn — falls nicht via YAML konfiguriert
     if runner.addons.get("command") is None:
-        await _attach_late(runner, CommandAddOn(), {HookPoint.ON_INPUT_PARSED})
+        await _attach_late(runner, CommandAddOnII(db_path="data/macros.db"), {HookPoint.ON_INPUT_PARSED})
 
     if runner.addons.get("builtin_commands") is None:
         await _attach_late(runner, BuiltinCommandsAddOn(), {HookPoint.ON_SESSION_START})

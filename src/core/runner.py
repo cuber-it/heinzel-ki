@@ -81,6 +81,7 @@ class Runner:
         self._dialog_log = _DialogLogger(self._agent_id, self._config)
         self._pending_provider: LLMProvider | None = None   # turn-safe swap
         self._in_turn: bool = False                         # laufender LLM-Call
+        self._provider_registry = None  # optional, gesetzt von HeinzelLoader wenn konfiguriert
         self._reasoning_strategy_name: str = "auto"  # "auto" = Selector entscheidet
         self._strategy_selector: StrategySelector = HybridSelector(
             feedback_store=SqliteFeedbackStore()
